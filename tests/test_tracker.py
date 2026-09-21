@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 
 from robot_soccer_vision.tracker import BallTracker, TrackerConfig, sample_hsv_color
+from robot_soccer_vision.adaptive_tracker import AdaptiveBallTracker, AdaptiveTrackerConfig
 
 
 ORANGE = (0, 140, 255)  # BGR
@@ -47,3 +48,36 @@ def test_hue_threshold_wraps_at_red_boundary() -> None:
 
     assert np.all(tracker.color_mask(frame) == 255)
 
+
+def _hsv_ball(value: int, hue: int = 15) -> np.ndarray:
+    hsv = np.zeros((180, 240, 3), dtype=np.uint8)
+    hsv[:, :] = (60, 100, 70)
+    cv2.circle(hsv, (120, 90), 14, (hue, 220, value), -1)
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+
+def test_adaptive_tracker_follows_gradual_light_change() -> None:
+    config = AdaptiveTrackerConfig(
+        radius=14,
+        hue_tolerance=8,
+        saturation_tolerance=35,
+        value_tolerance=28,
+        learning_rate=0.5,
+    )
+    tracker = AdaptiveBallTracker((15, 220, 220), config)
+
+    detections = [tracker.detect_and_update(_hsv_ball(value)) for value in range(210, 109, -10)]
+
+    assert all(detection is not None for detection in detections)
+    assert tracker.target_hsv[2] < 135
+    assert tracker.update_count == len(detections)
+
+
+def test_adaptive_tracker_does_not_learn_without_a_circle() -> None:
+    tracker = AdaptiveBallTracker((15, 220, 220), AdaptiveTrackerConfig(radius=14))
+    frame = np.zeros((180, 240, 3), dtype=np.uint8)
+    frame[:, 80:160] = ORANGE
+
+    assert tracker.detect_and_update(frame) is None
+    assert tracker.target_hsv == (15, 220, 220)
+    assert tracker.update_count == 0

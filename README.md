@@ -2,6 +2,8 @@
 
 An overhead-camera ball tracker for robot soccer. The first implementation combines a picked HSV color with a fixed-size circle template, which is a good fit for a stable camera facing a flat field.
 
+Two versions are included: a fixed-color tracker and an adaptive tracker that learns gradual lighting changes from trusted video detections.
+
 ## What it does
 
 - Shows the live camera feed.
@@ -28,6 +30,12 @@ Use the default camera:
 robot-soccer-track
 ```
 
+Run the adaptive-lighting version:
+
+```bash
+robot-soccer-track-adaptive
+```
+
 Use another camera or a recorded match:
 
 ```bash
@@ -42,6 +50,8 @@ robot-soccer-track --source path/to/match.mp4
 3. Press **Space** to sample its color and begin tracking.
 4. Tune the color-tolerance sliders if lighting changes create misses or false matches.
 5. Press **C**, or click in the video, to calibrate again. Press **Q** or **Esc** to quit.
+
+In the adaptive version, the displayed HSV model updates only after a strong circle-and-size match. Press **A** to freeze or resume learning. A learning rate around 10–15% follows gradual daylight or exposure changes without reacting too strongly to one noisy frame.
 
 For the most consistent result, lock the camera exposure and white balance after the field lighting is set.
 

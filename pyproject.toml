@@ -18,6 +18,7 @@ dev = ["pytest>=7.4"]
 
 [project.scripts]
 robot-soccer-track = "robot_soccer_vision.app:main"
+robot-soccer-track-adaptive = "robot_soccer_vision.adaptive_app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -25,4 +26,3 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-
