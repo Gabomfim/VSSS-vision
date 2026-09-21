@@ -97,6 +97,43 @@ robot-soccer-track-fast --report tuning-results/report.json
 
 Pseudo-labels are not independent truth: teacher and student can share the same systematic error. For final validation, manually label a small, diverse holdout set (for example, 50–100 frames chosen across lighting conditions and field locations). This is much cheaper than adding position sensors and detects failure modes that self-consistency alone cannot expose.
 
+## Label a random sample of difficult frames
+
+After producing a tuning report, launch the active-learning labeler:
+
+```bash
+robot-soccer-label \
+  --source path/to/calibration.mp4 \
+  --report tuning-results/report.json \
+  --count 100 \
+  --pool-fraction 0.25 \
+  --seed 7 \
+  --output manual-labels.csv
+```
+
+The tool scores every candidate frame using:
+
+- teacher ensemble confidence and vote count;
+- teacher/student center disagreement;
+- disagreement with the temporal motion prediction;
+- Laplacian sharpness as a motion/defocus-blur signal;
+- median brightness and shadow coverage.
+
+It forms a pool from the most difficult 25% of frames by default, then samples the requested number uniformly and reproducibly from that pool. Increase `--pool-fraction` for more variety, or use `--stride 2` to score every second frame when scanning a long video.
+
+In the labeling window:
+
+- click the ball center;
+- use `+` or `-` to adjust the circle radius;
+- press **Enter** to save the label;
+- press **M** to skip motion blur;
+- press **D** to skip darkness;
+- press **O** to skip occlusion;
+- press **S** for another impossible case;
+- press **Q** to save progress and quit.
+
+Every decision is written immediately to `manual-labels.csv`. Running the same command again safely resumes and excludes frames that were already labeled or skipped. Skip reasons are preserved, which makes it possible to analyze whether failures predominantly come from exposure, blur, or occlusion.
+
 For the most consistent result, lock the camera exposure and white balance after the field lighting is set.
 
 ## Tests
