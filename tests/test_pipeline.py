@@ -6,6 +6,8 @@ import numpy as np
 from robot_soccer_vision.fast_tracker import FastBallTracker, FastTrackerConfig
 from robot_soccer_vision.teacher import ExpensiveTeacher, TeacherConfig
 from robot_soccer_vision.tuning import run_student_ablation, save_report
+from robot_soccer_vision.field_rectifier import FieldRectifier
+from robot_soccer_vision.difficulty import rectifier_from_report
 
 
 def scene(center=(160, 110), radius=14, value=220) -> np.ndarray:
@@ -61,12 +63,18 @@ def test_ablation_and_report_are_serializable(tmp_path) -> None:
     frames = [scene((150 + i * 2, 100)) for i in range(3)]
     teacher = TeacherConfig((15, 220, 220), radius=14)
     labels = ExpensiveTeacher(teacher).label(frames)
+    rectifier = FieldRectifier(minimum_dimension=20)
+    for point in ((10, 10), (300, 15), (305, 220), (8, 225)):
+        rectifier.add_point(point)
 
     results = run_student_ablation(frames, labels, teacher)
-    save_report(str(tmp_path), teacher, [], labels, results, 1.0)
+    save_report(str(tmp_path), teacher, [], labels, results, 1.0, rectifier)
 
     report = json.loads((tmp_path / "report.json").read_text())
     assert len(results) == 16
     assert report["recommended_student"]["objective"] == results[0].objective
+    restored = rectifier_from_report(report)
+    assert restored is not None and restored.ready
+    assert restored.output_size == rectifier.output_size
     assert (tmp_path / "ablations.csv").exists()
     assert (tmp_path / "pseudo_labels.csv").exists()

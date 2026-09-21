@@ -11,6 +11,7 @@ import cv2
 from .difficulty import (
     configurations_from_report,
     load_selected_frames,
+    rectifier_from_report,
     sample_difficult_frames,
     score_video_difficulty,
 )
@@ -71,15 +72,21 @@ def _annotation_row(record, status: str, center, radius: int, reason: str = "") 
 def annotate(video_path: str, report_path: str, output_path: str, count: int, pool_fraction: float, seed: int, maximum_frames: int | None, stride: int) -> None:
     report = json.loads(Path(report_path).read_text(encoding="utf-8"))
     teacher, student = configurations_from_report(report)
+    rectifier = rectifier_from_report(report)
     destination = Path(output_path)
     rows = _existing_rows(destination)
     completed = {int(row["frame_index"]) for row in rows}
     print("Scoring video difficulty; the expensive teacher may take a while...")
     records = score_video_difficulty(
-        video_path, teacher, student, maximum_frames=maximum_frames, stride=stride
+        video_path,
+        teacher,
+        student,
+        maximum_frames=maximum_frames,
+        stride=stride,
+        rectifier=rectifier,
     )
     selected = sample_difficult_frames(records, count, pool_fraction, seed, completed)
-    frames = load_selected_frames(video_path, selected)
+    frames = load_selected_frames(video_path, selected, rectifier)
     if not selected:
         print("No unlabeled frames were available.")
         return

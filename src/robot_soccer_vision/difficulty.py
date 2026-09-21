@@ -7,6 +7,7 @@ import numpy as np
 
 from .fast_tracker import FastBallTracker, FastTrackerConfig
 from .teacher import ExpensiveTeacher, TeacherConfig
+from .field_rectifier import FieldRectifier
 
 
 @dataclass(slots=True)
@@ -55,6 +56,16 @@ def configurations_from_report(report: dict) -> tuple[TeacherConfig, FastTracker
     return teacher, student
 
 
+def rectifier_from_report(report: dict) -> FieldRectifier | None:
+    calibration = report.get("field_calibration")
+    if not calibration:
+        return None
+    rectifier = FieldRectifier()
+    for point in calibration["corners"]:
+        rectifier.add_point((round(point[0]), round(point[1])))
+    return rectifier
+
+
 def _visual_quality(frame: np.ndarray) -> tuple[float, float, float]:
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     blur_score = float(cv2.Laplacian(gray, cv2.CV_32F).var())
@@ -69,6 +80,7 @@ def score_video_difficulty(
     student_config: FastTrackerConfig,
     maximum_frames: int | None = None,
     stride: int = 1,
+    rectifier: FieldRectifier | None = None,
 ) -> list[DifficultyRecord]:
     capture = cv2.VideoCapture(video_path)
     if not capture.isOpened():
@@ -87,6 +99,8 @@ def score_video_difficulty(
             if frame_index % max(1, stride) != 0:
                 frame_index += 1
                 continue
+            if rectifier is not None:
+                frame = rectifier.warp(frame)
             label = teacher.detect(frame, frame_index)
             student_result = student.detect_timed(frame).detection
             blur, brightness, shadows = _visual_quality(frame)
@@ -193,7 +207,9 @@ def sample_difficult_frames(
 
 
 def load_selected_frames(
-    video_path: str, selected: list[DifficultyRecord]
+    video_path: str,
+    selected: list[DifficultyRecord],
+    rectifier: FieldRectifier | None = None,
 ) -> dict[int, np.ndarray]:
     wanted = {item.frame_index for item in selected}
     capture = cv2.VideoCapture(video_path)
@@ -205,10 +221,9 @@ def load_selected_frames(
             if not ok:
                 break
             if index in wanted:
-                frames[index] = frame
+                frames[index] = rectifier.warp(frame) if rectifier is not None else frame
                 wanted.remove(index)
             index += 1
     finally:
         capture.release()
     return frames
-

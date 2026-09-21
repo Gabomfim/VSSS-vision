@@ -61,22 +61,27 @@ robot-soccer-track --source path/to/match.mp4
 6. Tune the color-tolerance sliders if lighting changes create misses or false matches.
 7. Press **C**, or click in the video, to calibrate the ball again. Press **F** to redo the field corners. Press **Q** or **Esc** to quit.
 
-Corner selection rejects crossed, non-convex, or implausibly small fields. The perspective mapping is converted into fixed remap tables once, so live frames do not recompute the homography. The fast tracker includes rectification time in its on-screen total latency.
+Corner selection rejects crossed, non-convex, or implausibly small fields. The quad is used only to remove perspective skew; it does not infer physical dimensions, add margins, or convert coordinates to millimetres. The perspective mapping is converted into fixed remap tables once, so live frames do not recompute the homography. The fast tracker includes rectification time in its on-screen total latency.
 
 In the adaptive version, the displayed HSV model updates only after a strong circle-and-size match. Press **A** to freeze or resume learning. A learning rate around 10–15% follows gradual daylight or exposure changes without reacting too strongly to one noisy frame.
 
 ## Self-supervised tuning and ablations
 
-Record a representative video containing lighting changes and note the ball center and radius in its first frame. Then run:
+Record a representative video containing lighting changes, then run:
 
 ```bash
 robot-soccer-tune \
   --source path/to/calibration.mp4 \
-  --initial-x 640 \
-  --initial-y 360 \
-  --radius 14 \
   --output tuning-results
 ```
+
+The tuner opens an interactive setup on the first video frame:
+
+1. Define the field as a four-point quad: top-left, top-right, bottom-right, bottom-left.
+2. Review the rectified top-down view, place the circle overlay over the ball, and adjust the **Ball radius** slider.
+3. Press **Space** to start tuning.
+
+No initial position or radius command-line parameters are required. During tuning, the terminal displays a percentage bar and the active stage: video preparation, teacher search, pseudo-label generation, student ablations, and report generation.
 
 The expensive teacher searches the initial HSV sample, HSV tolerances, radius tolerance, radius, and adaptation rate. It selects them using agreement between:
 
