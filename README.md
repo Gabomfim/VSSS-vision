@@ -2,7 +2,7 @@
 
 An overhead-camera ball tracker for robot soccer. The first implementation combines a picked HSV color with a fixed-size circle template, which is a good fit for a stable camera facing a flat field.
 
-Two versions are included: a fixed-color tracker and an adaptive tracker that learns gradual lighting changes from trusted video detections.
+Three live versions are included: a fixed-color tracker, an adaptive tracker that learns gradual lighting changes, and a tuned low-latency tracker. An offline teacher/student pipeline can learn parameters and compare preprocessing/detection ablations from recorded video without external position sensors.
 
 ## What it does
 
@@ -36,6 +36,14 @@ Run the adaptive-lighting version:
 robot-soccer-track-adaptive
 ```
 
+Run the latency-optimized version:
+
+```bash
+robot-soccer-track-fast
+```
+
+The fast version keeps only the newest camera frame, predicts a small search region from ball velocity, uses a precomputed fixed-radius circular kernel, and falls back to a half-resolution global search after losing the ball. Its overlay reports processing time, camera-frame age, and whether ROI search was used.
+
 Use another camera or a recorded match:
 
 ```bash
@@ -52,6 +60,42 @@ robot-soccer-track --source path/to/match.mp4
 5. Press **C**, or click in the video, to calibrate again. Press **Q** or **Esc** to quit.
 
 In the adaptive version, the displayed HSV model updates only after a strong circle-and-size match. Press **A** to freeze or resume learning. A learning rate around 10–15% follows gradual daylight or exposure changes without reacting too strongly to one noisy frame.
+
+## Self-supervised tuning and ablations
+
+Record a representative video containing lighting changes and note the ball center and radius in its first frame. Then run:
+
+```bash
+robot-soccer-tune \
+  --source path/to/calibration.mp4 \
+  --initial-x 640 \
+  --initial-y 360 \
+  --radius 14 \
+  --output tuning-results
+```
+
+The expensive teacher searches the initial HSV sample, HSV tolerances, radius tolerance, radius, and adaptation rate. It selects them using agreement between:
+
+- forward and backward processing of the video;
+- the original frames and synthetic brightness/saturation changes;
+- multiple radii;
+- component shape, disk-minus-ring convolution, and Hough-circle evidence.
+
+Only consensus detections become pseudo-labels. The student ablation compares four preprocessing choices (`none`, circular opening, circular opening/closing, and Gaussian), two detectors (connected components and matched filtering), and ROI search on/off. Each row reports center error against the teacher, recall, mean latency, p95 latency, and a combined objective.
+
+The output directory contains:
+
+- `report.json`: selected teacher parameters and recommended fast pipeline;
+- `ablations.csv`: all accuracy/latency comparisons;
+- `pseudo_labels.csv`: teacher centers and confidence values.
+
+Use the selected pipeline directly:
+
+```bash
+robot-soccer-track-fast --report tuning-results/report.json
+```
+
+Pseudo-labels are not independent truth: teacher and student can share the same systematic error. For final validation, manually label a small, diverse holdout set (for example, 50–100 frames chosen across lighting conditions and field locations). This is much cheaper than adding position sensors and detects failure modes that self-consistency alone cannot expose.
 
 For the most consistent result, lock the camera exposure and white balance after the field lighting is set.
 

@@ -51,7 +51,7 @@ class BallTracker:
         self.target_hsv = target_hsv
         self.config = config or TrackerConfig()
 
-    def color_mask(self, frame_bgr: np.ndarray) -> np.ndarray:
+    def raw_color_mask(self, frame_bgr: np.ndarray) -> np.ndarray:
         hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
         target = np.array(self.target_hsv, dtype=np.int16)
         pixels = hsv.astype(np.int16)
@@ -63,7 +63,10 @@ class BallTracker:
             & (np.abs(pixels[:, :, 1] - target[1]) <= self.config.saturation_tolerance)
             & (np.abs(pixels[:, :, 2] - target[2]) <= self.config.value_tolerance)
         )
-        mask = (selected.astype(np.uint8) * 255)
+        return selected.astype(np.uint8) * 255
+
+    def color_mask(self, frame_bgr: np.ndarray) -> np.ndarray:
+        mask = self.raw_color_mask(frame_bgr)
         kernel_size = max(3, (self.config.radius // 4) | 1)
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
         return cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
@@ -103,4 +106,3 @@ class BallTracker:
             if score >= self.config.minimum_score and (best is None or score > best.score):
                 best = candidate
         return best
-
