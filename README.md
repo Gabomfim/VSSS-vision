@@ -17,7 +17,7 @@ Python 3.10 or newer is required.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e ".[dev]"
+python -m pip install ".[dev]"
 ```
 
 ## Run
