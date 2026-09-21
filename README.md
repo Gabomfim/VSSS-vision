@@ -53,11 +53,15 @@ robot-soccer-track --source path/to/match.mp4
 
 ## Calibrate and track
 
-1. Move the pointer so the white overlay is centered on the orange ball.
-2. Use **Ball radius** until the overlay follows the edge of the ball.
-3. Press **Space** to sample its color and begin tracking.
-4. Tune the color-tolerance sliders if lighting changes create misses or false matches.
-5. Press **C**, or click in the video, to calibrate again. Press **Q** or **Esc** to quit.
+1. Click the four field corners in this order: **top-left**, **top-right**, **bottom-right**, **bottom-left**. Use **U** to undo a corner or **R** to restart the selection.
+2. The camera image is rectified into a rectangular top-down field.
+3. Move the pointer so the white overlay is centered on the orange ball.
+4. Use **Ball radius** until the overlay follows the edge of the ball.
+5. Press **Space** to sample its color and begin tracking.
+6. Tune the color-tolerance sliders if lighting changes create misses or false matches.
+7. Press **C**, or click in the video, to calibrate the ball again. Press **F** to redo the field corners. Press **Q** or **Esc** to quit.
+
+Corner selection rejects crossed, non-convex, or implausibly small fields. The perspective mapping is converted into fixed remap tables once, so live frames do not recompute the homography. The fast tracker includes rectification time in its on-screen total latency.
 
 In the adaptive version, the displayed HSV model updates only after a strong circle-and-size match. Press **A** to freeze or resume learning. A learning rate around 10–15% follows gradual daylight or exposure changes without reacting too strongly to one noisy frame.
 

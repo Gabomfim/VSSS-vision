@@ -6,6 +6,7 @@ import time
 import cv2
 
 from .tracker import BallTracker, TrackerConfig, sample_hsv_color
+from .field_rectifier import FieldRectifier
 
 WINDOW = "Robot Soccer - Ball Tracker"
 CONTROLS = "Calibration"
@@ -31,6 +32,8 @@ def run(source: int | str = 0) -> None:
     picked = False
     last_detection = None
     last_seen = 0.0
+    rectifier = FieldRectifier()
+    field_error = [""]
 
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
     cv2.namedWindow(CONTROLS, cv2.WINDOW_NORMAL)
@@ -41,9 +44,16 @@ def run(source: int | str = 0) -> None:
 
     def mouse(event: int, x: int, y: int, _flags: int, _param) -> None:
         nonlocal calibrating
-        cursor[:] = [x, y]
         if event == cv2.EVENT_LBUTTONDOWN:
-            calibrating = True
+            if not rectifier.ready:
+                try:
+                    rectifier.add_point((x, y))
+                    field_error[0] = ""
+                except ValueError as error:
+                    field_error[0] = str(error)
+            else:
+                cursor[:] = [x, y]
+                calibrating = True
 
     cv2.setMouseCallback(WINDOW, mouse)
 
@@ -52,6 +62,26 @@ def run(source: int | str = 0) -> None:
             ok, frame = capture.read()
             if not ok:
                 break
+            if not rectifier.ready:
+                display = rectifier.draw_setup(frame)
+                next_name = rectifier.next_corner_name or "correct the selection"
+                _draw_label(display, f"FIELD SETUP: click {next_name}", 0, (0, 255, 255))
+                _draw_label(display, "Order: top-left, top-right, bottom-right, bottom-left", 1)
+                _draw_label(display, "U: undo   R: restart   Q: quit", 2)
+                if field_error[0]:
+                    _draw_label(display, field_error[0], 3, (0, 0, 255))
+                cv2.imshow(WINDOW, display)
+                key = cv2.waitKey(1) & 0xFF
+                if key in (ord("q"), 27):
+                    break
+                if key == ord("u"):
+                    rectifier.undo()
+                    field_error[0] = ""
+                if key == ord("r"):
+                    rectifier.reset()
+                    field_error[0] = ""
+                continue
+            frame = rectifier.warp(frame)
             if cursor == [0, 0]:
                 cursor[:] = [frame.shape[1] // 2, frame.shape[0] // 2]
 
@@ -79,7 +109,7 @@ def run(source: int | str = 0) -> None:
                     _draw_label(display, f"BALL x={center[0]} y={center[1]} score={last_detection.score:.2f}", 0, (0, 255, 0))
                 else:
                     _draw_label(display, "Ball not found", 0, (0, 0, 255))
-                _draw_label(display, "Press C or click to recalibrate", 1)
+                _draw_label(display, "C/click: ball calibration   F: field corners", 1)
 
             cv2.imshow(WINDOW, display)
             key = cv2.waitKey(1) & 0xFF
@@ -87,6 +117,11 @@ def run(source: int | str = 0) -> None:
                 break
             if key == ord("c"):
                 calibrating = True
+            if key == ord("f"):
+                rectifier.reset()
+                calibrating = True
+                picked = False
+                cursor[:] = [0, 0]
             if key == ord(" ") and calibrating:
                 tracker.target_hsv = sample_hsv_color(frame, tuple(cursor), config.radius)
                 picked = True
@@ -106,4 +141,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
