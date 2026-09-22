@@ -99,6 +99,7 @@ The output directory contains:
 - `report.json`: selected teacher parameters and recommended fast pipeline;
 - `ablations.csv`: all accuracy/latency comparisons;
 - `pseudo_labels.csv`: teacher centers and confidence values.
+- `manifest.json`: input provenance, runtime information, Git revision, and SHA-256 hashes of every tuning artifact.
 
 Use the selected pipeline directly:
 
@@ -128,6 +129,8 @@ The live overlay shows the current center difference and cumulative matched dete
 - fast and teacher latency distributions;
 - teacher confidence distribution;
 - source frames skipped by newest-frame acquisition.
+
+Evaluation also creates `<name>.frames.csv`, containing the fast and teacher position, radius, confidence, score, latency, ROI usage, source sequence, skipped-frame count, and center error for every processed frame. `<name>.manifest.json` links the evaluation video or camera, calibration report, original calibration-video provenance, runtime, Git revision, and hashes of both evaluation artifacts.
 
 Evaluation does not replace the fast tracker output with teacher output and does not adapt the fast tracker from teacher positions. Teacher agreement is a pseudo-label metric rather than independent ground truth, so the difficult-frame manual labels remain the appropriate check for shared systematic errors. `--evaluate` requires `--report`.
 
@@ -169,6 +172,21 @@ In the labeling window:
 - press **Q** to save progress and quit.
 
 Every decision is written immediately to `manual-labels.csv`. Running the same command again safely resumes and excludes frames that were already labeled or skipped. Skip reasons are preserved, which makes it possible to analyze whether failures predominantly come from exposure, blur, or occlusion.
+
+The labeler additionally writes `manual-labels.selection.json` and `manual-labels.manifest.json`. These preserve every random sample, difficulty signal, seed, pool fraction, source-video hash, calibration-report hash, runtime, Git revision, reviewed counts, and artifact hashes.
+
+## Reproducible report provenance
+
+Tuning, evaluation, and manual validation outputs are designed as machine-readable inputs for a later LaTeX/PDF report. Provenance records include:
+
+- absolute path, filename, byte size, modification time, and SHA-256 for every file input;
+- the full command and working directory;
+- UTC timestamp, host, operating system, Python, OpenCV, and NumPy versions;
+- Git repository root, commit, dirty state, and tracked-diff hash;
+- calibration parameters, selected quad, random seeds, sampling settings, and selected pipeline;
+- output artifact paths and SHA-256 hashes.
+
+The manifests intentionally do not hash themselves, avoiding recursive hashes. A live camera is recorded by its source identifier because it has no immutable file to hash; for a fully reproducible experiment, record the camera stream and evaluate that video file.
 
 For the most consistent result, lock the camera exposure and white balance after the field lighting is set.
 

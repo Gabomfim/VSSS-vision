@@ -78,3 +78,10 @@ def test_ablation_and_report_are_serializable(tmp_path) -> None:
     assert restored.output_size == rectifier.output_size
     assert (tmp_path / "ablations.csv").exists()
     assert (tmp_path / "pseudo_labels.csv").exists()
+    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    assert manifest["run_type"] == "self_supervised_tuning"
+    assert {item["filename"] for item in manifest["artifacts"]} == {
+        "report.json",
+        "ablations.csv",
+        "pseudo_labels.csv",
+    }

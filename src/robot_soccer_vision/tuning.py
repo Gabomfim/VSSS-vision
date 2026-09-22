@@ -14,6 +14,13 @@ from .fast_tracker import FastBallTracker, FastTrackerConfig
 from .teacher import ExpensiveTeacher, PseudoLabel, TeacherConfig
 from .tracker import sample_hsv_color
 from .field_rectifier import FieldRectifier
+from .provenance import (
+    artifact_records,
+    file_record,
+    json_safe,
+    runtime_record,
+    write_manifest,
+)
 
 
 @dataclass(slots=True)
@@ -239,6 +246,7 @@ def save_report(
     ablations: list[AblationResult],
     elapsed_seconds: float,
     rectifier: FieldRectifier | None = None,
+    provenance: dict | None = None,
 ) -> None:
     output = Path(output_directory)
     output.mkdir(parents=True, exist_ok=True)
@@ -249,6 +257,7 @@ def save_report(
         "ablation_count": len(ablations),
         "recommended_student": asdict(ablations[0]),
         "elapsed_seconds": elapsed_seconds,
+        "provenance": provenance,
         "field_calibration": None
         if rectifier is None
         else {
@@ -257,7 +266,8 @@ def save_report(
         },
         "warning": "Pseudo-label agreement is not independent ground truth; validate on a small manually labeled holdout before competition use.",
     }
-    (output / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    report_path = output / "report.json"
+    report_path.write_text(json.dumps(json_safe(report), indent=2), encoding="utf-8")
     with (output / "ablations.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(asdict(ablations[0]).keys()))
         writer.writeheader()
@@ -278,6 +288,20 @@ def save_report(
                         "votes": label.votes,
                     }
                 )
+    artifact_paths = [
+        report_path,
+        output / "ablations.csv",
+        output / "pseudo_labels.csv",
+    ]
+    write_manifest(
+        output / "manifest.json",
+        {
+            "schema_version": 1,
+            "run_type": "self_supervised_tuning",
+            "provenance": provenance,
+            "artifacts": artifact_records(artifact_paths),
+        },
+    )
 
 
 def tune_pipeline(
@@ -291,6 +315,12 @@ def tune_pipeline(
     progress=None,
 ) -> tuple[TeacherConfig, list[AblationResult]]:
     started = perf_counter()
+    if progress is not None:
+        progress("Provenance", 0, "hashing calibration video")
+    provenance = {
+        "input": file_record(video_path, "calibration_video"),
+        "runtime": runtime_record(Path(__file__).resolve().parents[2]),
+    }
     if progress is not None:
         progress("Video preparation", 1, "loading and rectifying frames")
     frames = load_video_frames(video_path, maximum_frames, rectifier=rectifier)
@@ -330,6 +360,7 @@ def tune_pipeline(
         ablations,
         perf_counter() - started,
         rectifier,
+        provenance,
     )
     if progress is not None:
         progress("Complete", 100, "tuning finished")

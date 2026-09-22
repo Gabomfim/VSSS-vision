@@ -3,11 +3,13 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 import json
+import csv
 
 import numpy as np
 
 from .fast_tracker import TimedDetection
 from .teacher import PseudoLabel
+from .provenance import artifact_records, json_safe, write_manifest
 
 
 @dataclass(slots=True)
@@ -24,6 +26,7 @@ class EvaluationAccumulator:
     fast_latencies_ms: list[float] = field(default_factory=list)
     teacher_latencies_ms: list[float] = field(default_factory=list)
     teacher_confidences: list[float] = field(default_factory=list)
+    frame_records: list[dict] = field(default_factory=list)
 
     def update(
         self,
@@ -31,6 +34,8 @@ class EvaluationAccumulator:
         teacher: PseudoLabel | None,
         teacher_latency_ms: float,
         skipped_source_frames: int = 0,
+        frame_index: int | None = None,
+        source_sequence: int | None = None,
     ) -> float | None:
         self.processed_frames += 1
         self.source_frames_skipped += max(0, skipped_source_frames)
@@ -41,22 +46,40 @@ class EvaluationAccumulator:
         if teacher is not None:
             self.teacher_detections += 1
             self.teacher_confidences.append(teacher.confidence)
+        error = None
         if fast.detection is None and teacher is not None:
             self.fast_misses += 1
-            return None
-        if fast.detection is not None and teacher is None:
+        elif fast.detection is not None and teacher is None:
             self.fast_only_detections += 1
-            return None
-        if fast.detection is None or teacher is None:
-            return None
-        error = float(
-            np.linalg.norm(
-                np.asarray(fast.detection.center, dtype=float)
-                - np.asarray(teacher.center, dtype=float)
+        elif fast.detection is not None and teacher is not None:
+            error = float(
+                np.linalg.norm(
+                    np.asarray(fast.detection.center, dtype=float)
+                    - np.asarray(teacher.center, dtype=float)
+                )
             )
+            self.matched_detections += 1
+            self.center_errors.append(error)
+        self.frame_records.append(
+            {
+                "frame_index": frame_index,
+                "source_sequence": source_sequence,
+                "source_frames_skipped": max(0, skipped_source_frames),
+                "fast_x": None if fast.detection is None else fast.detection.center[0],
+                "fast_y": None if fast.detection is None else fast.detection.center[1],
+                "fast_radius": None if fast.detection is None else fast.detection.radius,
+                "fast_score": None if fast.detection is None else fast.detection.score,
+                "teacher_x": None if teacher is None else teacher.center[0],
+                "teacher_y": None if teacher is None else teacher.center[1],
+                "teacher_radius": None if teacher is None else teacher.radius,
+                "teacher_confidence": None if teacher is None else teacher.confidence,
+                "teacher_votes": None if teacher is None else teacher.votes,
+                "center_error_px": error,
+                "fast_latency_ms": fast.total_ms,
+                "teacher_latency_ms": teacher_latency_ms,
+                "fast_used_roi": fast.used_roi,
+            }
         )
-        self.matched_detections += 1
-        self.center_errors.append(error)
         return error
 
     @staticmethod
@@ -101,9 +124,35 @@ class EvaluationAccumulator:
             "teacher_confidence": self._distribution(self.teacher_confidences),
         }
 
-    def save(self, path: str) -> None:
+    def save(self, path: str, provenance: dict | None = None) -> None:
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary = destination.with_suffix(destination.suffix + ".tmp")
-        temporary.write_text(json.dumps(self.summary(), indent=2), encoding="utf-8")
+        summary_payload = {
+            "schema_version": 1,
+            "run_type": "fast_tracker_evaluation",
+            "provenance": provenance,
+            "metrics": self.summary(),
+        }
+        temporary.write_text(
+            json.dumps(json_safe(summary_payload), indent=2), encoding="utf-8"
+        )
         temporary.replace(destination)
+        frames_path = destination.with_name(destination.stem + ".frames.csv")
+        if self.frame_records:
+            with frames_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(self.frame_records[0]))
+                writer.writeheader()
+                writer.writerows(self.frame_records)
+        else:
+            frames_path.write_text("frame_index\n", encoding="utf-8")
+        manifest_path = destination.with_name(destination.stem + ".manifest.json")
+        write_manifest(
+            manifest_path,
+            {
+                "schema_version": 1,
+                "run_type": "fast_tracker_evaluation",
+                "provenance": provenance,
+                "artifacts": artifact_records([destination, frames_path]),
+            },
+        )

@@ -15,6 +15,7 @@ from .field_rectifier import FieldRectifier
 from .difficulty import configurations_from_report
 from .evaluation import EvaluationAccumulator
 from .teacher import ExpensiveTeacher
+from .provenance import file_record, input_record, runtime_record
 
 WINDOW = "Robot Soccer - Fast Adaptive Tracker"
 CONTROLS = "Fast calibration"
@@ -64,11 +65,21 @@ def run(
     evaluation_frame = 0
     previous_source_sequence = 0
     latest_error = None
+    evaluation_provenance = None
     if evaluate:
+        print("Recording calibration and evaluation input provenance...")
         report = json.loads(Path(report_path).read_text(encoding="utf-8"))
         teacher_config, _ = configurations_from_report(report)
         teacher = ExpensiveTeacher(teacher_config)
         evaluation = EvaluationAccumulator(teacher_config.radius)
+        evaluation_provenance = {
+            "inputs": [
+                input_record(source, "evaluation_video_or_camera"),
+                file_record(report_path, "calibration_report"),
+            ],
+            "calibration_provenance": report.get("provenance"),
+            "runtime": runtime_record(Path(__file__).resolve().parents[2]),
+        }
 
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
     cv2.namedWindow(CONTROLS, cv2.WINDOW_NORMAL)
@@ -151,6 +162,8 @@ def run(
                         teacher_label,
                         teacher_ms,
                         skipped_source_frames,
+                        evaluation_frame,
+                        sequence,
                     )
                     evaluation_frame += 1
                 age_ms = (monotonic() - captured_at) * 1000
@@ -201,7 +214,7 @@ def run(
         capture.release()
         cv2.destroyAllWindows()
         if evaluation is not None:
-            evaluation.save(evaluation_output)
+            evaluation.save(evaluation_output, evaluation_provenance)
             print(f"Evaluation saved to {evaluation_output}")
 
 

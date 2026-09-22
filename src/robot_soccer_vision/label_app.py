@@ -5,6 +5,7 @@ import csv
 import json
 from dataclasses import asdict
 from pathlib import Path
+from datetime import datetime, timezone
 
 import cv2
 
@@ -15,6 +16,7 @@ from .difficulty import (
     sample_difficult_frames,
     score_video_difficulty,
 )
+from .provenance import artifact_records, file_record, runtime_record, write_manifest
 
 WINDOW = "Robot Soccer - Difficult Frame Labeler"
 FIELDNAMES = [
@@ -55,6 +57,31 @@ def _save_rows(path: Path, rows: list[dict]) -> None:
     temporary.replace(path)
 
 
+def _save_label_manifest(
+    destination: Path,
+    selection_path: Path,
+    provenance: dict,
+    rows: list[dict],
+) -> None:
+    artifacts = [selection_path]
+    if destination.exists():
+        artifacts.insert(0, destination)
+    write_manifest(
+        destination.with_name(destination.stem + ".manifest.json"),
+        {
+            "schema_version": 1,
+            "run_type": "manual_difficult_frame_labeling",
+            "provenance": provenance,
+            "counts": {
+                "total_reviewed": len(rows),
+                "labeled": sum(row["status"] == "labeled" for row in rows),
+                "skipped": sum(row["status"] == "skipped" for row in rows),
+            },
+            "artifacts": artifact_records(artifacts),
+        },
+    )
+
+
 def _annotation_row(record, status: str, center, radius: int, reason: str = "") -> dict:
     row = asdict(record)
     row.update(
@@ -76,6 +103,22 @@ def annotate(video_path: str, report_path: str, output_path: str, count: int, po
     destination = Path(output_path)
     rows = _existing_rows(destination)
     completed = {int(row["frame_index"]) for row in rows}
+    print("Recording input provenance and SHA-256 hashes...")
+    provenance = {
+        "inputs": [
+            file_record(video_path, "manual_validation_video"),
+            file_record(report_path, "calibration_report"),
+        ],
+        "calibration_provenance": report.get("provenance"),
+        "sampling": {
+            "requested_count": count,
+            "difficult_pool_fraction": pool_fraction,
+            "random_seed": seed,
+            "maximum_frames": maximum_frames,
+            "stride": stride,
+        },
+        "runtime": runtime_record(Path(__file__).resolve().parents[2]),
+    }
     print("Scoring video difficulty; the expensive teacher may take a while...")
     records = score_video_difficulty(
         video_path,
@@ -87,6 +130,27 @@ def annotate(video_path: str, report_path: str, output_path: str, count: int, po
     )
     selected = sample_difficult_frames(records, count, pool_fraction, seed, completed)
     frames = load_selected_frames(video_path, selected, rectifier)
+    selection_path = destination.with_name(destination.stem + ".selection.json")
+    selection_history = []
+    if selection_path.exists():
+        try:
+            selection_history = json.loads(selection_path.read_text(encoding="utf-8"))[
+                "runs"
+            ]
+        except (KeyError, json.JSONDecodeError):
+            selection_history = []
+    selection_history.append(
+        {
+            "selected_utc": datetime.now(timezone.utc).isoformat(),
+            "sampling": provenance["sampling"],
+            "frames": [item.to_dict() for item in selected],
+        }
+    )
+    write_manifest(
+        selection_path,
+        {"schema_version": 1, "runs": selection_history},
+    )
+    _save_label_manifest(destination, selection_path, provenance, rows)
     if not selected:
         print("No unlabeled frames were available.")
         return
@@ -107,6 +171,7 @@ def annotate(video_path: str, report_path: str, output_path: str, count: int, po
             if frame is None:
                 rows.append(_annotation_row(record, "skipped", None, state["radius"], "unreadable"))
                 _save_rows(destination, rows)
+                _save_label_manifest(destination, selection_path, provenance, rows)
                 position += 1
                 continue
             if state["center"] is None and record.teacher_x is not None:
@@ -147,6 +212,7 @@ def annotate(video_path: str, report_path: str, output_path: str, count: int, po
             else:
                 continue
             _save_rows(destination, rows)
+            _save_label_manifest(destination, selection_path, provenance, rows)
             position += 1
             state["center"] = None
     finally:
