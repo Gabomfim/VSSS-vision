@@ -39,7 +39,7 @@ def _configuration_from_report(path: str | None) -> tuple[FastTrackerConfig, tup
 
 def run(source: int | str = 0, report_path: str | None = None) -> None:
     config, target = _configuration_from_report(report_path)
-    capture = LatestFrameCapture(source)
+    capture = LatestFrameCapture(source, start_paused_after_first=True)
     tracker = FastBallTracker(target, config)
     cursor = [0, 0]
     calibrating = report_path is None
@@ -47,6 +47,8 @@ def run(source: int | str = 0, report_path: str | None = None) -> None:
     sequence = 0
     rectifier = FieldRectifier()
     field_error = [""]
+    raw_frame = None
+    captured_at = 0.0
 
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
     cv2.namedWindow(CONTROLS, cv2.WINDOW_NORMAL)
@@ -60,20 +62,29 @@ def run(source: int | str = 0, report_path: str | None = None) -> None:
                 try:
                     rectifier.add_point((x, y))
                     field_error[0] = ""
+                    if rectifier.ready and picked and not calibrating:
+                        capture.resume()
                 except ValueError as error:
                     field_error[0] = str(error)
             else:
                 cursor[:] = [x, y]
                 calibrating = True
+                capture.pause()
 
     cv2.setMouseCallback(WINDOW, mouse)
     try:
         while True:
-            ok, frame, sequence, captured_at = capture.read(sequence)
-            if not ok:
-                if capture.finished:
-                    break
-                continue
+            needs_frame = raw_frame is None or (
+                rectifier.ready and picked and not calibrating
+            )
+            if needs_frame:
+                ok, new_frame, sequence, captured_at = capture.read(sequence)
+                if not ok:
+                    if capture.finished:
+                        break
+                    continue
+                raw_frame = new_frame
+            frame = raw_frame
             if not rectifier.ready:
                 display = rectifier.draw_setup(frame)
                 next_name = rectifier.next_corner_name or "correct the selection"
@@ -127,7 +138,9 @@ def run(source: int | str = 0, report_path: str | None = None) -> None:
                 break
             if key == ord("c"):
                 calibrating = True
+                capture.pause()
             if key == ord("f"):
+                capture.pause()
                 rectifier.reset()
                 calibrating = True
                 picked = False
@@ -140,6 +153,7 @@ def run(source: int | str = 0, report_path: str | None = None) -> None:
                 tracker.update_count = 0
                 picked = True
                 calibrating = False
+                capture.resume()
     finally:
         capture.release()
         cv2.destroyAllWindows()

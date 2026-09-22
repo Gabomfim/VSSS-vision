@@ -7,7 +7,7 @@ import cv2
 
 
 class LatestFrameCapture:
-    def __init__(self, source: int | str) -> None:
+    def __init__(self, source: int | str, start_paused_after_first: bool = False) -> None:
         self.capture = cv2.VideoCapture(source)
         if not self.capture.isOpened():
             raise RuntimeError(f"Could not open camera or video source: {source}")
@@ -17,11 +17,24 @@ class LatestFrameCapture:
         self._sequence = 0
         self._captured_at = 0.0
         self._stopped = False
+        self._paused = False
+        self._pause_after_frame = start_paused_after_first
+        source_fps = self.capture.get(cv2.CAP_PROP_FPS)
+        self._playback_interval = (
+            1.0 / source_fps
+            if isinstance(source, str) and 1.0 <= source_fps <= 1000.0
+            else 0.0
+        )
         self._thread = Thread(target=self._reader, daemon=True)
         self._thread.start()
 
     def _reader(self) -> None:
         while not self._stopped:
+            with self._condition:
+                self._condition.wait_for(lambda: not self._paused or self._stopped)
+                if self._stopped:
+                    break
+            frame_started = monotonic()
             ok, frame = self.capture.read()
             with self._condition:
                 if not ok:
@@ -31,7 +44,22 @@ class LatestFrameCapture:
                 self._frame = frame
                 self._captured_at = monotonic()
                 self._sequence += 1
+                if self._pause_after_frame:
+                    self._paused = True
+                    self._pause_after_frame = False
                 self._condition.notify_all()
+                remaining = self._playback_interval - (monotonic() - frame_started)
+                if remaining > 0 and not self._paused:
+                    self._condition.wait(timeout=remaining)
+
+    def pause(self) -> None:
+        with self._condition:
+            self._paused = True
+
+    def resume(self) -> None:
+        with self._condition:
+            self._paused = False
+            self._condition.notify_all()
 
     def read(self, after_sequence: int = 0, timeout: float = 1.0):
         with self._condition:
@@ -47,8 +75,8 @@ class LatestFrameCapture:
         return self._stopped
 
     def release(self) -> None:
-        self._stopped = True
-        self.capture.release()
         with self._condition:
+            self._stopped = True
             self._condition.notify_all()
+        self.capture.release()
         self._thread.join(timeout=1.0)

@@ -44,6 +44,8 @@ robot-soccer-track-fast
 
 The fast version keeps only the newest camera frame, predicts a small search region from ball velocity, uses a precomputed fixed-radius circular kernel, and falls back to a half-resolution global search after losing the ball. Its overlay reports processing time, camera-frame age, and whether ROI search was used.
 
+During fast-tracker setup, the first frame is frozen while the field quad and ball parameters are selected. Acquisition begins only after **Space** confirms ball calibration. Pressing **C** or **F** pauses on the latest frame again. Recorded videos are paced using their encoded frame rate; live cameras continue to discard stale buffered frames.
+
 Use another camera or a recorded match:
 
 ```bash
