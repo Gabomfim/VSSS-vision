@@ -106,6 +106,31 @@ Use the selected pipeline directly:
 robot-soccer-track-fast --report tuning-results/report.json
 ```
 
+### Evaluate a calibrated fast tracker
+
+To compare the report-backed fast tracker with the expensive adaptive teacher on the same incoming frames:
+
+```bash
+robot-soccer-track-fast \
+  --source path/to/validation.mp4 \
+  --report tuning-results/report.json \
+  --evaluate \
+  --evaluation-output tuning-results/fast-evaluation.json
+```
+
+The live overlay shows the current center difference and cumulative matched detections. The JSON summary is saved when the video ends or the user quits. It contains:
+
+- fast and teacher detection rates;
+- fast recall and miss rate relative to teacher detections;
+- fast-only detection rate;
+- mean, median, p95, and maximum center difference in pixels;
+- agreement within one-quarter and one-half of the calibrated ball radius;
+- fast and teacher latency distributions;
+- teacher confidence distribution;
+- source frames skipped by newest-frame acquisition.
+
+Evaluation does not replace the fast tracker output with teacher output and does not adapt the fast tracker from teacher positions. Teacher agreement is a pseudo-label metric rather than independent ground truth, so the difficult-frame manual labels remain the appropriate check for shared systematic errors. `--evaluate` requires `--report`.
+
 Pseudo-labels are not independent truth: teacher and student can share the same systematic error. For final validation, manually label a small, diverse holdout set (for example, 50–100 frames chosen across lighting conditions and field locations). This is much cheaper than adding position sensors and detects failure modes that self-consistency alone cannot expose.
 
 ## Label a random sample of difficult frames

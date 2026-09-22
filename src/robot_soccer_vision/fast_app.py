@@ -12,6 +12,9 @@ from .fast_tracker import FastBallTracker, FastTrackerConfig
 from .latest_frame import LatestFrameCapture
 from .tracker import sample_hsv_color
 from .field_rectifier import FieldRectifier
+from .difficulty import configurations_from_report
+from .evaluation import EvaluationAccumulator
+from .teacher import ExpensiveTeacher
 
 WINDOW = "Robot Soccer - Fast Adaptive Tracker"
 CONTROLS = "Fast calibration"
@@ -37,7 +40,14 @@ def _configuration_from_report(path: str | None) -> tuple[FastTrackerConfig, tup
     return config, tuple(teacher["target_hsv"])
 
 
-def run(source: int | str = 0, report_path: str | None = None) -> None:
+def run(
+    source: int | str = 0,
+    report_path: str | None = None,
+    evaluate: bool = False,
+    evaluation_output: str = "fast-evaluation.json",
+) -> None:
+    if evaluate and report_path is None:
+        raise ValueError("--evaluate requires --report so the robust teacher is defined")
     config, target = _configuration_from_report(report_path)
     capture = LatestFrameCapture(source, start_paused_after_first=True)
     tracker = FastBallTracker(target, config)
@@ -49,6 +59,16 @@ def run(source: int | str = 0, report_path: str | None = None) -> None:
     field_error = [""]
     raw_frame = None
     captured_at = 0.0
+    teacher = None
+    evaluation = None
+    evaluation_frame = 0
+    previous_source_sequence = 0
+    latest_error = None
+    if evaluate:
+        report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+        teacher_config, _ = configurations_from_report(report)
+        teacher = ExpensiveTeacher(teacher_config)
+        evaluation = EvaluationAccumulator(teacher_config.radius)
 
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
     cv2.namedWindow(CONTROLS, cv2.WINDOW_NORMAL)
@@ -84,6 +104,10 @@ def run(source: int | str = 0, report_path: str | None = None) -> None:
                         break
                     continue
                 raw_frame = new_frame
+                skipped_source_frames = max(0, sequence - previous_source_sequence - 1)
+                previous_source_sequence = sequence
+            else:
+                skipped_source_frames = 0
             frame = raw_frame
             if not rectifier.ready:
                 display = rectifier.draw_setup(frame)
@@ -118,6 +142,17 @@ def run(source: int | str = 0, report_path: str | None = None) -> None:
                 _draw_label(display, "Press SPACE to sample and track", 1)
             elif picked:
                 result = tracker.detect_timed(frame)
+                if evaluation is not None and teacher is not None:
+                    teacher_started = perf_counter_ns()
+                    teacher_label = teacher.detect(frame, evaluation_frame)
+                    teacher_ms = (perf_counter_ns() - teacher_started) / 1e6
+                    latest_error = evaluation.update(
+                        result,
+                        teacher_label,
+                        teacher_ms,
+                        skipped_source_frames,
+                    )
+                    evaluation_frame += 1
                 age_ms = (monotonic() - captured_at) * 1000
                 if result.detection is not None:
                     detection = result.detection
@@ -132,6 +167,14 @@ def run(source: int | str = 0, report_path: str | None = None) -> None:
                     1,
                 )
                 _draw_label(display, "C: ball   F: field corners   A: freeze learning", 2)
+                if evaluation is not None:
+                    error_text = "n/a" if latest_error is None else f"{latest_error:.2f}px"
+                    _draw_label(
+                        display,
+                        f"EVAL teacher difference={error_text} matched={evaluation.matched_detections}/{evaluation.teacher_detections}",
+                        3,
+                        (255, 200, 0),
+                    )
             cv2.imshow(WINDOW, display)
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
@@ -157,14 +200,29 @@ def run(source: int | str = 0, report_path: str | None = None) -> None:
     finally:
         capture.release()
         cv2.destroyAllWindows()
+        if evaluation is not None:
+            evaluation.save(evaluation_output)
+            print(f"Evaluation saved to {evaluation_output}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the tuned low-latency adaptive tracker")
     parser.add_argument("--source", default="0", help="Camera index or path to video")
     parser.add_argument("--report", help="report.json produced by robot-soccer-tune")
+    parser.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="compare the fast tracker with the report's expensive adaptive teacher",
+    )
+    parser.add_argument(
+        "--evaluation-output",
+        default="fast-evaluation.json",
+        help="JSON destination used with --evaluate",
+    )
     args = parser.parse_args()
-    run(_parse_source(args.source), args.report)
+    if args.evaluate and not args.report:
+        parser.error("--evaluate requires --report")
+    run(_parse_source(args.source), args.report, args.evaluate, args.evaluation_output)
 
 
 if __name__ == "__main__":
