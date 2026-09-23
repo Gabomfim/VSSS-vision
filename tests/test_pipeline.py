@@ -51,6 +51,43 @@ def test_downsampled_recovery_maps_to_full_resolution() -> None:
 
     assert result.detection is not None
     assert np.linalg.norm(np.asarray(result.detection.center) - (200, 120)) <= 3
+    assert result.refinement_ms > 0
+
+
+def test_tracker_returns_to_full_field_after_roi_misses() -> None:
+    tracker = FastBallTracker(
+        (15, 220, 220),
+        FastTrackerConfig(
+            radius=14,
+            recovery_scale=0.5,
+            maximum_roi_misses=1,
+            matched_filter_threshold=0.3,
+        ),
+    )
+    assert tracker.detect_timed(scene((150, 100))).detection is not None
+    blank = np.zeros((240, 320, 3), dtype=np.uint8)
+
+    first_miss = tracker.detect_timed(blank)
+    second_miss = tracker.detect_timed(blank)
+    recovery = tracker.detect_timed(scene((260, 180)))
+
+    assert first_miss.used_roi is True
+    assert second_miss.used_roi is True
+    assert recovery.used_roi is False
+    assert recovery.detection is not None
+    assert recovery.refinement_ms > 0
+
+
+def test_selected_radius_precomputes_one_fixed_kernel() -> None:
+    tracker = FastBallTracker((15, 220, 220), FastTrackerConfig(radius=11))
+
+    assert tracker._kernel_radius == 11
+    first_kernel = tracker._kernel
+    tracker.set_radius(11)
+    assert tracker._kernel is first_kernel
+    tracker.set_radius(15)
+    assert tracker._kernel_radius == 15
+    assert tracker._kernel is not first_kernel
 
 
 def test_expensive_teacher_reaches_consensus() -> None:

@@ -10,11 +10,13 @@ class FakeVideoCapture:
     def __init__(self, _source) -> None:
         self.index = 0
         self.released = False
+        self.settings = []
 
     def isOpened(self) -> bool:
         return True
 
     def set(self, _property, _value) -> bool:
+        self.settings.append((_property, _value))
         return True
 
     def get(self, _property) -> float:
@@ -50,5 +52,17 @@ def test_capture_freezes_first_frame_until_resumed(monkeypatch) -> None:
         advanced, next_frame, next_sequence, _ = capture.read(sequence, timeout=0.2)
         assert advanced and next_sequence > sequence
         assert np.all(next_frame == 1)
+    finally:
+        capture.release()
+
+
+def test_live_camera_requests_single_buffer_and_manual_controls(monkeypatch) -> None:
+    fake = FakeVideoCapture(0)
+    monkeypatch.setattr(latest_frame_module.cv2, "VideoCapture", lambda _source: fake)
+    capture = LatestFrameCapture(0, manual_camera=True, exposure=-7.0)
+    try:
+        assert (latest_frame_module.cv2.CAP_PROP_BUFFERSIZE, 1) in fake.settings
+        assert (latest_frame_module.cv2.CAP_PROP_AUTO_EXPOSURE, 0.25) in fake.settings
+        assert (latest_frame_module.cv2.CAP_PROP_EXPOSURE, -7.0) in fake.settings
     finally:
         capture.release()

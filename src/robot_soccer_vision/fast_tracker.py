@@ -31,6 +31,7 @@ class TimedDetection:
     preprocess_ms: float
     detect_ms: float
     used_roi: bool
+    refinement_ms: float = 0.0
 
 
 class FastBallTracker(AdaptiveBallTracker):
@@ -45,15 +46,63 @@ class FastBallTracker(AdaptiveBallTracker):
     ) -> None:
         super().__init__(target_hsv, config or FastTrackerConfig())
         self._last_center: np.ndarray | None = None
-        self._velocity = np.zeros(2, dtype=float)
         self._misses = 0
         self._kernel_radius = -1
         self._kernel: np.ndarray | None = None
+        self._kalman_state: np.ndarray | None = None
+        self._kalman_covariance = np.eye(4, dtype=float)
+        self._transition = np.asarray(
+            [[1, 0, 1, 0], [0, 1, 0, 1], [0, 0, 1, 0], [0, 0, 0, 1]],
+            dtype=float,
+        )
+        self._observation = np.asarray(
+            [[1, 0, 0, 0], [0, 1, 0, 0]], dtype=float
+        )
+        self._process_noise = np.diag([0.2, 0.2, 1.0, 1.0])
+        self._measurement_noise = np.eye(2, dtype=float) * 2.0
+        self.set_radius(self.config.radius)
 
     def reset_motion(self) -> None:
         self._last_center = None
-        self._velocity[:] = 0
         self._misses = 0
+        self._kalman_state = None
+        self._kalman_covariance = np.eye(4, dtype=float)
+
+    def set_radius(self, radius: int) -> None:
+        """Update the selected radius and eagerly precompute its fixed kernel."""
+        radius = max(2, int(radius))
+        self.config.radius = radius
+        self._circle_kernel(radius)
+
+    def _kalman_predict(self) -> np.ndarray | None:
+        if self._kalman_state is None:
+            return None
+        self._kalman_state = self._transition @ self._kalman_state
+        self._kalman_covariance = (
+            self._transition @ self._kalman_covariance @ self._transition.T
+            + self._process_noise
+        )
+        return self._kalman_state[:2].copy()
+
+    def _kalman_correct(self, center: np.ndarray) -> None:
+        if self._kalman_state is None:
+            self._kalman_state = np.asarray([center[0], center[1], 0.0, 0.0])
+            self._kalman_covariance = np.diag([2.0, 2.0, 16.0, 16.0])
+            return
+        innovation_covariance = (
+            self._observation @ self._kalman_covariance @ self._observation.T
+            + self._measurement_noise
+        )
+        gain = (
+            self._kalman_covariance
+            @ self._observation.T
+            @ np.linalg.pinv(innovation_covariance)
+        )
+        innovation = center - self._observation @ self._kalman_state
+        self._kalman_state += gain @ innovation
+        self._kalman_covariance = (
+            np.eye(4) - gain @ self._observation
+        ) @ self._kalman_covariance
 
     def _circle_kernel(self, radius: int) -> np.ndarray:
         if self._kernel is not None and radius == self._kernel_radius:
@@ -71,14 +120,16 @@ class FastBallTracker(AdaptiveBallTracker):
         self._kernel = kernel
         return kernel
 
-    def _predicted_roi(self, shape: tuple[int, ...]) -> tuple[int, int, int, int] | None:
-        if not self.config.use_roi or self._last_center is None:
+    def _predicted_roi(
+        self, shape: tuple[int, ...], predicted: np.ndarray | None
+    ) -> tuple[int, int, int, int] | None:
+        if not self.config.use_roi or predicted is None:
             return None
-        predicted = self._last_center + self._velocity
+        speed = 0.0 if self._kalman_state is None else np.linalg.norm(self._kalman_state[2:])
         half = int(
             max(
                 self.config.radius * self.config.roi_radius_multiplier,
-                self.config.radius * 3 + np.linalg.norm(self._velocity) * 1.5,
+                self.config.radius * 3 + speed * 1.5,
             )
         )
         height, width = shape[:2]
@@ -136,7 +187,8 @@ class FastBallTracker(AdaptiveBallTracker):
 
     def detect_timed(self, frame_bgr: np.ndarray, update: bool = True) -> TimedDetection:
         started = perf_counter_ns()
-        roi = self._predicted_roi(frame_bgr.shape)
+        predicted = self._kalman_predict()
+        roi = self._predicted_roi(frame_bgr.shape, predicted)
         used_roi = roi is not None and self._misses <= self.config.maximum_roi_misses
         if used_roi:
             x0, y0, x1, y1 = roi
@@ -167,6 +219,7 @@ class FastBallTracker(AdaptiveBallTracker):
         finally:
             self.config.radius = original_radius
 
+        refinement_ms = 0.0
         if detection is not None:
             global_center = (
                 round(detection.center[0] / search_scale) + x0,
@@ -175,11 +228,35 @@ class FastBallTracker(AdaptiveBallTracker):
             detection = BallDetection(
                 global_center, detection.radius / search_scale, detection.score
             )
+            if search_scale < 1.0:
+                refinement_started = perf_counter_ns()
+                half = max(original_radius * 3, 12)
+                height, width = frame_bgr.shape[:2]
+                rx0 = max(0, global_center[0] - half)
+                ry0 = max(0, global_center[1] - half)
+                rx1 = min(width, global_center[0] + half + 1)
+                ry1 = min(height, global_center[1] + half + 1)
+                native_search = frame_bgr[ry0:ry1, rx0:rx1]
+                native_mask = self._preprocess_mask(native_search)
+                native_detection = (
+                    self._component_detection(native_mask)
+                    if self.config.detector == "components"
+                    else self._matched_detection(native_mask)
+                )
+                if native_detection is not None:
+                    detection = BallDetection(
+                        (
+                            native_detection.center[0] + rx0,
+                            native_detection.center[1] + ry0,
+                        ),
+                        native_detection.radius,
+                        native_detection.score,
+                    )
+                refinement_ms = (perf_counter_ns() - refinement_started) / 1e6
             center = np.asarray(global_center, dtype=float)
-            if self._last_center is not None:
-                measured_velocity = center - self._last_center
-                self._velocity = 0.65 * self._velocity + 0.35 * measured_velocity
+            center = np.asarray(detection.center, dtype=float)
             self._last_center = center
+            self._kalman_correct(center)
             self._misses = 0
             if update and detection.score >= self.config.adaptation_min_score:
                 self.update_color_model(frame_bgr, detection)
@@ -192,4 +269,5 @@ class FastBallTracker(AdaptiveBallTracker):
             preprocess_ms,
             detect_ms,
             used_roi,
+            refinement_ms,
         )

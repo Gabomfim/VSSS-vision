@@ -42,9 +42,23 @@ Run the latency-optimized version:
 robot-soccer-track-fast
 ```
 
-The fast version keeps only the newest camera frame, predicts a small search region from ball velocity, uses a precomputed fixed-radius circular kernel, and falls back to a half-resolution global search after losing the ball. Its overlay reports processing time, camera-frame age, and whether ROI search was used.
+The fast version keeps only the newest camera frame, predicts a small search region with a constant-velocity Kalman filter, uses an 8-bit binary color mask and a precomputed fixed-radius circular kernel, and falls back to a half-resolution global search only after losing the ball. A recovery candidate is refined in a native-resolution local crop. Normal tracking does not use Hough transforms or multi-scale kernel banks. Its overlay reports processing time, capture-to-result latency, and whether ROI search was used.
 
 During fast-tracker setup, the first frame is frozen while the field quad and ball parameters are selected. Acquisition begins only after **Space** confirms ball calibration. Pressing **C** or **F** pauses on the latest frame again. Recorded videos are paced using their encoded frame rate; live cameras continue to discard stale buffered frames.
+
+For the lowest production-loop overhead, use a calibration report and disable rendering:
+
+```bash
+robot-soccer-track-fast --report tuning-results/report.json --no-display
+```
+
+Alternatively, retain a diagnostic preview but draw only one result out of every ten:
+
+```bash
+robot-soccer-track-fast --report tuning-results/report.json --display-every 10
+```
+
+For live cameras, the fast tracker requests a one-frame backend buffer and manual exposure and white balance. `--exposure VALUE` passes a backend-specific exposure value to OpenCV. Use `--automatic-camera` only when automatic camera controls are intentionally required. On exit, the application prints mean, p95, and maximum capture-to-result latency; evaluation reports also store this distribution and the value for every frame.
 
 Use another camera or a recorded match:
 

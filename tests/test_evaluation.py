@@ -20,7 +20,13 @@ def label(center=None) -> PseudoLabel | None:
 def test_evaluation_counts_agreement_misses_and_fast_only_detections(tmp_path) -> None:
     evaluation = EvaluationAccumulator(ball_radius=12)
     error = evaluation.update(
-        timed((10, 10)), label((13, 14)), 8.0, 2, frame_index=4, source_sequence=7
+        timed((10, 10)),
+        label((13, 14)),
+        8.0,
+        2,
+        frame_index=4,
+        source_sequence=7,
+        capture_to_result_ms=3.5,
     )
     evaluation.update(timed(None), label((20, 20)), 9.0, frame_index=5)
     evaluation.update(timed((30, 30)), None, 7.0, frame_index=6)
@@ -33,11 +39,13 @@ def test_evaluation_counts_agreement_misses_and_fast_only_detections(tmp_path) -
     assert summary["fast_miss_rate_against_teacher"] == 0.5
     assert summary["fast_only_detection_rate"] == 1 / 3
     assert summary["center_error_px"]["mean"] == 5.0
+    assert summary["capture_to_result_latency_ms"]["mean"] == 3.5
 
     output = tmp_path / "evaluation.json"
     evaluation.save(str(output), {"inputs": [{"sha256": "abc"}]})
     payload = json.loads(output.read_text())
     assert payload["metrics"]["matched_detections"] == 1
+    assert payload["metrics"]["capture_to_result_latency_ms"]["mean"] == 3.5
     assert payload["provenance"]["inputs"][0]["sha256"] == "abc"
     assert (tmp_path / "evaluation.frames.csv").exists()
     assert (tmp_path / "evaluation.manifest.json").exists()

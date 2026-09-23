@@ -24,6 +24,7 @@ class EvaluationAccumulator:
     fast_only_detections: int = 0
     center_errors: list[float] = field(default_factory=list)
     fast_latencies_ms: list[float] = field(default_factory=list)
+    capture_to_result_latencies_ms: list[float] = field(default_factory=list)
     teacher_latencies_ms: list[float] = field(default_factory=list)
     teacher_confidences: list[float] = field(default_factory=list)
     frame_records: list[dict] = field(default_factory=list)
@@ -36,10 +37,13 @@ class EvaluationAccumulator:
         skipped_source_frames: int = 0,
         frame_index: int | None = None,
         source_sequence: int | None = None,
+        capture_to_result_ms: float | None = None,
     ) -> float | None:
         self.processed_frames += 1
         self.source_frames_skipped += max(0, skipped_source_frames)
         self.fast_latencies_ms.append(fast.total_ms)
+        if capture_to_result_ms is not None:
+            self.capture_to_result_latencies_ms.append(capture_to_result_ms)
         self.teacher_latencies_ms.append(teacher_latency_ms)
         if fast.detection is not None:
             self.fast_detections += 1
@@ -76,8 +80,10 @@ class EvaluationAccumulator:
                 "teacher_votes": None if teacher is None else teacher.votes,
                 "center_error_px": error,
                 "fast_latency_ms": fast.total_ms,
+                "capture_to_result_latency_ms": capture_to_result_ms,
                 "teacher_latency_ms": teacher_latency_ms,
                 "fast_used_roi": fast.used_roi,
+                "fast_refinement_ms": fast.refinement_ms,
             }
         )
         return error
@@ -120,6 +126,9 @@ class EvaluationAccumulator:
                 float(np.mean(errors <= self.ball_radius * 0.5)) if errors.size else None
             ),
             "fast_latency_ms": self._distribution(self.fast_latencies_ms),
+            "capture_to_result_latency_ms": self._distribution(
+                self.capture_to_result_latencies_ms
+            ),
             "teacher_latency_ms": self._distribution(self.teacher_latencies_ms),
             "teacher_confidence": self._distribution(self.teacher_confidences),
         }

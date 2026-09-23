@@ -7,11 +7,25 @@ import cv2
 
 
 class LatestFrameCapture:
-    def __init__(self, source: int | str, start_paused_after_first: bool = False) -> None:
+    def __init__(
+        self,
+        source: int | str,
+        start_paused_after_first: bool = False,
+        manual_camera: bool = True,
+        exposure: float | None = None,
+    ) -> None:
         self.capture = cv2.VideoCapture(source)
         if not self.capture.isOpened():
             raise RuntimeError(f"Could not open camera or video source: {source}")
         self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        if isinstance(source, int) and manual_camera:
+            # OpenCV backends use different numeric conventions; these values request
+            # manual exposure/white balance where the driver supports them.
+            self.capture.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+            if hasattr(cv2, "CAP_PROP_AUTO_WB"):
+                self.capture.set(cv2.CAP_PROP_AUTO_WB, 0)
+            if exposure is not None:
+                self.capture.set(cv2.CAP_PROP_EXPOSURE, exposure)
         self._condition = Condition()
         self._frame = None
         self._sequence = 0
