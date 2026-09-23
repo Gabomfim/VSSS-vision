@@ -237,8 +237,13 @@ def run(
                     if video_writer is None:
                         destination = Path(video_output)
                         destination.parent.mkdir(parents=True, exist_ok=True)
+                        # MJPEG/AVI is supported by OpenCV builds that do not ship
+                        # an MP4 encoder (notably some macOS wheels).  Keep MP4 as
+                        # the default when requested, while allowing a portable
+                        # AVI output for experiment recording.
+                        codec = "MJPG" if destination.suffix.lower() == ".avi" else "mp4v"
                         video_writer = cv2.VideoWriter(
-                            str(destination), cv2.VideoWriter_fourcc(*"mp4v"), capture.fps,
+                            str(destination), cv2.VideoWriter_fourcc(*codec), capture.fps,
                             (display.shape[1], display.shape[0]),
                         )
                         if not video_writer.isOpened():
@@ -322,7 +327,10 @@ def main() -> None:
         default="fast-evaluation.json",
         help="JSON destination used with --evaluate",
     )
-    parser.add_argument("--video-output", help="write an annotated MP4 evaluation video")
+    parser.add_argument(
+        "--video-output",
+        help="write an annotated evaluation video (.mp4 or portable MJPEG .avi)",
+    )
     args = parser.parse_args()
     if args.evaluate and not args.report:
         parser.error("--evaluate requires --report")

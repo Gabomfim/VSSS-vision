@@ -1,0 +1,217 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazilian]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\geometry{margin=2cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.48em}
+\setlist{nosep,leftmargin=1.35em}
+\renewcommand{\arraystretch}{1.16}
+
+\definecolor{navy}{HTML}{17324D}
+\definecolor{blue}{HTML}{246B9E}
+\definecolor{orange}{HTML}{E87524}
+\definecolor{green}{HTML}{277A53}
+\definecolor{lightblue}{HTML}{EAF4FA}
+\definecolor{lightgreen}{HTML}{EAF6EF}
+\definecolor{lightorange}{HTML}{FFF1E7}
+\definecolor{graytext}{HTML}{4C5964}
+
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,
+  pdftitle={Relatorio Comparativo de Calibracoes},
+  pdfauthor={Projeto VSSS Vision}}
+\pagestyle{plain}
+\newcommand{\boxnote}[2]{\begin{center}\fcolorbox{#1}{#1!8}{\parbox{0.92\linewidth}{#2}}\end{center}}
+\newcommand{\best}{\bfseries\color{green}}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  \vspace*{2.2cm}
+  {\color{navy}\rule{\textwidth}{1.5pt}}\\[1.1cm]
+  {\Huge\bfseries\color{navy} Relatório Comparativo\\[0.2cm]
+  de Calibrações\par}
+  \vspace{0.6cm}
+  {\Large\color{graytext} Tracking da bola no VSSS\par}
+  \vspace{1.4cm}
+  \boxnote{orange}{\textbf{Objetivo.} Comparar calibrações feitas com iluminação
+  consistente e variável, antes e depois de \textit{active learning}, em dois vídeos de
+  teste independentes. O foco é descobrir qual calibração é mais segura em cada cenário
+  e medir a contribuição das marcações humanas.}
+  \vfill
+  {\large Projeto VSSS Vision\par}
+  {\color{graytext}23 de setembro de 2026\par}
+  \vspace{1cm}
+  {\color{navy}\rule{\textwidth}{1.5pt}}
+\end{titlepage}
+
+\section{Resumo dos resultados}
+
+\boxnote{green}{\textbf{Recomendação principal.} Entre as alternativas avaliadas, a
+\textbf{calibração consistente com \textit{active learning}} é a escolha mais equilibrada
+para uso geral. No teste consistente ela manteve erro subpixel; no teste variável obteve
+92,7\% de \textit{recall} e erro médio de 1,44 px, sem os grandes \textit{outliers}
+observados na calibração variável original.}
+
+Para o cenário de luz consistente, a versão \textbf{consistente-base} foi ligeiramente
+melhor: erro médio de 0,61 px e \textit{recall} de 86,7\%. O refinamento não trouxe ganho
+nesse caso. Para o cenário de luz variável, a versão \textbf{consistente + active learning}
+foi a opção mais confiável. A calibração variável-base apresentou \textit{recall} alto,
+mas isso foi enganoso: apenas 45,0\% das detecções correspondentes ficaram a menos de meio
+raio do \textit{teacher}, com erros extremos acima de mil pixels.
+
+O \textit{active learning} teve efeito misto. Ele corrigiu fortemente os grandes erros da
+calibração variável no teste variável, mas reduziu seu \textit{recall}. Na calibração
+consistente, o efeito foi pequeno: ajudou a robustez no teste variável, mas não melhorou o
+teste consistente.
+
+\section{Como o experimento foi feito}
+
+Foram geradas quatro calibrações:
+\begin{itemize}
+  \item vídeo de treino com luz consistente, versão-base e versão com \textit{active learning};
+  \item vídeo de treino com luz variável, versão-base e versão com \textit{active learning}.
+\end{itemize}
+
+Cada uma foi executada nos dois vídeos de teste, formando oito avaliações. A imagem foi
+primeiro corrigida pela homografia do quadrilátero do campo. O tracker leve e o
+\textit{teacher} robusto receberam o mesmo frame retificado. O programa manteve apenas o
+frame mais recente, descartando frames antigos, como faria no controle em tempo real.
+Por isso, ``frames processados'' é menor que o total do vídeo: isso mede comportamento
+sob carga, e não uma reprodução offline frame a frame.
+
+O vídeo de saída contém somente os frames efetivamente processados e anotados. Assim, sua
+duração é menor que a do vídeo original; ele serve para inspeção visual das amostras usadas
+na avaliação. A latência foi medida de captura até resultado, incluindo correção de
+perspectiva, espera e processamento do tracker leve. O tempo do \textit{teacher} foi
+registrado separadamente e não representa o custo do sistema em produção.
+
+\subsection*{O que significa cada métrica}
+\begin{tabularx}{\linewidth}{>{\bfseries}p{3.4cm}X}
+\toprule
+\textit{Recall} & Fração das detecções do \textit{teacher} também encontradas pelo tracker leve. Maior é melhor.\\
+Erro de centro & Distância entre os centros do tracker leve e do \textit{teacher}. Menor é melhor.\\
+Dentro de meio raio & Fração das correspondências com erro menor que metade do raio da bola. Ajuda a revelar \textit{outliers}.\\
+Latência p95 & Valor abaixo do qual ficaram 95\% das latências de captura até resultado. Menor é melhor.\\
+\bottomrule
+\end{tabularx}
+
+\section{Resultados completos}
+
+\begin{center}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lllrrrrrr}
+\toprule
+Treino & Versão & Teste & Frames & \textit{Recall} & Erro médio & Erro p95 & $<0{,}5r$ & Latência p95\\
+ & & & processados & (\%) & (px) & (px) & (\%) & (ms)\\
+\midrule
+Consistente & Base & Consistente & 544 & 86,68 & \best 0,61 & \best 1,28 & 100,00 & 57,73\\
+Consistente & Active & Consistente & 517 & 86,42 & 0,73 & 1,45 & 100,00 & 54,12\\
+Variável & Base & Consistente & 516 & \best 87,87 & 105,94 & 1005,14 & 86,19 & 58,60\\
+Variável & Active & Consistente & 484 & 86,07 & 153,56 & 1070,48 & 79,95 & 61,47\\
+\midrule
+Consistente & Base & Variável & 724 & 92,51 & 2,65 & 1,77 & 99,70 & 56,99\\
+Consistente & Active & Variável & 688 & 92,72 & \best 1,44 & 2,95 & \best 99,84 & 56,79\\
+Variável & Base & Variável & 709 & \best 96,47 & 364,74 & 1095,40 & 45,03 & \best 48,69\\
+Variável & Active & Variável & 639 & 91,24 & 1,50 & \best 2,06 & 99,66 & 58,04\\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+\boxnote{orange}{\textbf{Cuidado ao ler apenas o \textit{recall}.} A calibração
+variável-base encontrou a bola com frequência, porém muitas posições estavam no local
+errado. O erro médio de 364,74 px e o agreement de apenas 45,03\% dentro de meio raio
+mostram que o número alto de detecções não significa tracking correto.}
+
+O erro médio maior que o p95 em algumas linhas não é contradição. Poucos erros extremos,
+próximos de mil pixels, puxam a média para cima, enquanto mais de 95\% dos demais valores
+podem continuar pequenos. Isso é um sinal importante de falha ocasional catastrófica.
+
+\section{Contribuição do \textit{active learning}}
+
+A calibração consistente recebeu 13 frames positivos rotulados; 17 frames difíceis foram
+pulados. A calibração variável recebeu 21 positivos; 9 foram pulados. Não houve exemplos
+manuais negativos (bola ausente), portanto esta rodada avalia principalmente a localização
+da bola visível, e não a rejeição de falsos positivos quando ela não aparece.
+
+\begin{center}
+\begin{tabularx}{\linewidth}{ll>{\raggedleft\arraybackslash}p{2cm}>{\raggedleft\arraybackslash}p{2.2cm}X}
+\toprule
+Treino & Teste & $\Delta$ recall & $\Delta$ erro médio & Interpretação\\
+\midrule
+Consistente & Consistente & -0,26 pp & +0,12 px & Mudança pequena; a versão-base permaneceu melhor.\\
+Consistente & Variável & +0,21 pp & -1,20 px & Ganho de robustez média, mas p95 aumentou 1,18 px.\\
+Variável & Consistente & -1,80 pp & +47,62 px & Piora clara; não usar esta combinação.\\
+Variável & Variável & -5,23 pp & -363,24 px & Removeu erros catastróficos, com perda de detecções.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+No treino variável, o \textit{active learning} mudou o \textit{teacher} de HSV
+$(19,148,243)$ e raio 19 para HSV $(15,146,235)$ e raio 20. O erro do \textit{teacher}
+selecionado nos 21 frames manuais foi 0,52 px, com 100\% de \textit{recall}. O student
+continuou usando abertura morfológica, \textit{matched filter} e ROI. Essa pequena mudança
+de parâmetros foi suficiente para eliminar a maior parte dos saltos de posição no teste
+variável.
+
+No treino consistente, o \textit{teacher} mudou de raio 17 para 19 e o student passou de
+nenhum pré-processamento para filtro Gaussiano. Embora o \textit{recall} manual tenha sido
+100\%, o erro manual selecionado foi 10,92 px. Isso indica que as 13 marcações não foram
+suficientes para uma melhora segura nesse cenário.
+
+\section{Escolha por cenário}
+
+\begin{tabularx}{\linewidth}{>{\bfseries}p{3.4cm}>{\bfseries\color{navy}}p{4.8cm}X}
+\toprule
+Cenário & Calibração indicada & Motivo\\
+\midrule
+Luz consistente & Consistente-base & Melhor erro médio e p95; 100\% das correspondências dentro de meio raio.\\
+Luz variável & Consistente + active learning & Melhor equilíbrio entre recall, erro baixo e ausência de falhas catastróficas.\\
+Uso geral / cenário desconhecido & Consistente + active learning & Foi estável nos dois testes e é a opção mais conservadora entre as avaliadas.\\
+\bottomrule
+\end{tabularx}
+
+\section{Limitações e próximo experimento}
+
+O \textit{teacher} é uma referência automática, não um \textit{ground truth} independente.
+Além disso, o refinamento muda o próprio \textit{teacher}; por isso, diferenças pequenas
+entre base e active não devem ser interpretadas como prova definitiva. Os resultados
+grandes e consistentes, como a remoção dos erros de aproximadamente mil pixels, são mais
+confiáveis.
+
+O próximo passo recomendado é rotular manualmente uma pequena amostra estratificada dos
+\textbf{vídeos de teste}, incluindo frames normais, blur, sombras e bola ausente. Essa
+amostra deve permanecer separada da calibração. Com ela, todas as quatro alternativas
+podem ser comparadas contra o mesmo \textit{ground truth}, inclusive em falsos positivos.
+
+\section{Rastreabilidade}
+
+Todos os JSONs de avaliação registram caminho absoluto, SHA-256, comando, versão do Python,
+OpenCV, commit e estado do repositório. Os vídeos originais usados foram:
+
+\begin{itemize}
+  \item \texttt{train\_consistent\_light.MOV}: \texttt{27d7d4468b3a...};
+  \item \texttt{train\_varying\_light.MOV}: \texttt{337e034c1acb...};
+  \item \texttt{test\_consistent\_light.MOV}: \texttt{1262eaf71cab...};
+  \item \texttt{test\_varying\_light.MOV}: \texttt{ca08bcba9083...}.
+\end{itemize}
+
+Os quatro reports de calibração possuem hashes iniciados por
+\texttt{3dc689f033ee}, \texttt{b21854065574}, \texttt{101a3d0978f7} e
+\texttt{744ebecffb69}. O commit de código no início da rodada foi
+\texttt{9aebb003d7035a12215814e76278410ee2f6781a}. As cópias MJPEG foram usadas
+somente porque o OpenCV local não decodificava HEVC; os arquivos originais foram preservados.
+
+\end{document}
