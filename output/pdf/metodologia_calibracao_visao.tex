@@ -98,16 +98,25 @@ funções:
 \toprule
 Modelo robusto & Usa várias técnicas e busca consenso. É mais lento e serve como
 ``professor'' durante calibração e avaliação.\\
-Modelo leve & Usa apenas a combinação escolhida pelas ablações. É o modelo executado
+Modelo leve & Usa apenas a combinação escolhida pelos testes comparativos, chamados de
+ablações. É o modelo executado
 em tempo real durante o jogo.\\
 \bottomrule
 \end{tabularx}
 \end{center}
 
 \conceptbox{green}{
-  O modelo robusto não é uma verdade perfeita. Ele é uma \textbf{pseudo-referência}.
+  O modelo robusto não é uma verdade perfeita. A posição que ele gera automaticamente é
+  uma \textbf{pseudo-etiqueta}, não uma verdade absoluta.
   Uma pequena amostra rotulada manualmente continua necessária para detectar erros que
   os dois modelos possam cometer juntos.
+}
+
+\conceptbox{blue}{
+  \textbf{Exemplo para acompanhar o texto:} suponha uma bola de raio 17 pixels. Em certo
+  quadro, o professor estima o centro em $(620,410)$ e o aluno em $(622,409)$. A distância
+  entre os centros é 2,2 pixels, ou $2,2/17=0,13$ raio. Se o resultado chegar 3,8 ms após a
+  captura, esse quadro contribui tanto para a medida de precisão quanto para a de latência.
 }
 
 \section{Calibração inicial}
@@ -160,7 +169,9 @@ com ruído.
 
 \section{Representação de cor e adaptação à luz}
 
-A imagem é convertida de BGR para \textbf{HSV}. Nesse espaço, cada pixel é descrito por:
+A imagem chega em BGR, a ordem azul--verde--vermelho usada pelo OpenCV, e é convertida para
+\textbf{HSV}, que reorganiza a mesma cor em matiz, saturação e brilho. Nesse espaço, cada
+pixel é descrito por:
 
 \begin{itemize}
   \item \textbf{H (matiz):} o tipo de cor, por exemplo laranja;
@@ -171,6 +182,11 @@ A imagem é convertida de BGR para \textbf{HSV}. Nesse espaço, cada pixel é de
 Um pixel entra na máscara de bola quando sua distância para a cor aprendida está dentro das
 tolerâncias de H, S e V. A matiz é circular: valores próximos das extremidades da escala
 também podem representar cores vizinhas.
+
+A \textbf{máscara binária} é uma imagem em preto e branco: um pixel aceito pelas três
+tolerâncias fica branco (possível bola), enquanto um pixel rejeitado fica preto. Ela evita
+cálculos com números decimais e pode ser processada rapidamente tanto pelo professor quanto
+pelo aluno; o professor apenas combina essa informação com mais evidências.
 
 Depois de uma detecção de alta confiança, o sistema observa novamente a parte interna da
 bola e atualiza a cor por uma \textbf{média móvel exponencial}:
@@ -187,7 +203,7 @@ encontrada, o modelo de cor fica congelado para evitar que o fundo seja aprendid
 
 \section{Pré-processamento comparado}
 
-O afinamento testa quatro alternativas. Nenhuma é sempre melhor; a escolha depende do
+A etapa de ajuste testa quatro alternativas. Nenhuma é sempre melhor; a escolha depende do
 vídeo e do custo medido no computador real.
 
 \begin{center}
@@ -205,12 +221,18 @@ Abertura + fechamento & Além de remover pontos, preenche pequenos buracos causa
 
 Os elementos morfológicos são elípticos, não quadrados. Isso respeita melhor a geometria da
 bola e evita introduzir preferência artificial por direções horizontal e vertical.
+A \textbf{erosão} encolhe as regiões brancas da máscara, enquanto uma \textbf{dilatação} as
+expande. A abertura combina as duas para remover pontos pequenos; o fechamento usa a ordem
+contrária para preencher pequenos buracos.
 
 \section{Técnicas de detecção}
 
 \subsection{Filtro casado disco-menos-anel}
 
-O detector leve principal usa uma convolução com um núcleo circular pré-calculado. O centro
+O detector leve principal usa uma \textbf{convolução} com um \textbf{núcleo} circular
+pré-calculado. O núcleo é uma pequena tabela de números que funciona como um molde. A
+convolução desliza esse molde sobre a imagem e calcula, em cada posição, uma nota de
+semelhança. O centro
 do núcleo possui pesos positivos e representa a bola. Um anel externo possui pesos
 negativos e representa o fundo esperado ao redor dela.
 
@@ -242,7 +264,8 @@ O professor executa uma busca global e combina várias opiniões:
 
 \begin{enumerate}
   \item filtro casado e componentes conexos;
-  \item três raios próximos ao raio inicial;
+  \item repete a detecção com três tamanhos candidatos próximos ao raio inicial, tolerando
+  um pequeno erro da calibração;
   \item abertura e fechamento morfológicos;
   \item detecção circular por Hough;
   \item preferência temporal por posições compatíveis com o movimento recente.
@@ -253,6 +276,11 @@ confiança, concordância espacial e proximidade da posição prevista. Só grup
 mínimo geram uma pseudo-etiqueta. A cor adaptativa do professor também só é atualizada após
 uma decisão confiável.
 
+Por exemplo, se três detectores propõem centros separados por apenas dois ou três pixels,
+eles formam um grupo forte. Uma quarta proposta muito distante fica isolada e pode ser
+rejeitada. A posição aceita recebe o nome de \textbf{pseudo-etiqueta}: é um rótulo produzido
+automaticamente, útil para treinamento, mas ainda sujeito a erro.
+
 Como trabalha fora de tempo real, o professor analisa o vídeo nos dois sentidos. Detecções
 próximas feitas com passado e futuro são combinadas conforme a confiança; grandes diferenças
 são rejeitadas. Um suavizador de Kalman bidirecional Rauch--Tung--Striebel ajusta posição e
@@ -262,10 +290,29 @@ compatíveis antes e depois, sem inventar dados durante oclusões longas.
 Esse conjunto custa mais tempo que o permitido no jogo, mas reduz a chance de confiar em um
 único tipo de erro. Ele é adequado para processar vídeos gravados fora do laço de controle.
 
+\begin{center}
+\begin{tabularx}{\linewidth}{>{\bfseries}p{2.4cm}XX}
+\toprule
+ & Informação temporal & Uso principal\\
+\midrule
+Professor & Quadro atual, passado e futuro; suavização bidirecional RTS. & Criar e conferir
+pseudo-etiquetas em vídeo gravado.\\
+Aluno & Quadro atual e estado calculado no passado; filtro de Kalman causal. & Entregar a
+posição ao vivo durante o jogo.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Usar o futuro no professor não é vazamento para o sistema ao vivo: essa informação serve
+somente para criar rótulos fora de tempo real. O aluno nunca recebe quadros futuros durante
+o ajuste nem durante o teste.
+
 \section{Autossupervisão e escolha de hiperparâmetros}
 
 Autossupervisão significa criar um sinal de qualidade a partir do próprio vídeo, sem exigir
 a posição medida por um sensor externo em todos os quadros.
+
+\subsection{Ajuste do professor}
 
 O sistema experimenta variações da cor inicial, raio, tolerâncias HSV, tolerância de raio e
 taxa de adaptação. Cada candidato é avaliado por quatro sinais:
@@ -279,10 +326,15 @@ taxa de adaptação. Cada candidato é avaliado por quatro sinais:
   de brilho e saturação.
 \end{itemize}
 
-O melhor professor produz pseudo-etiquetas bidirecionais. O aluno permanece causal: usa
+O melhor professor produz pseudo-etiquetas bidirecionais.
+
+\subsection{Escolha do aluno por ablações}
+
+O aluno permanece causal: usa
 somente o quadro atual e resultados anteriores, nunca o futuro. Comparam-se então 16
 combinações: quatro pré-processamentos, dois detectores e busca por região ligada ou
-desligada. O critério final combina:
+desligada. Uma \textbf{ablação} é esse teste controlado: muda-se uma parte do pipeline e
+observa-se quanto a precisão e a latência se alteram. O critério final combina:
 
 \[
   \text{objetivo} = \text{erro de centro normalizado}
@@ -293,12 +345,24 @@ desligada. O critério final combina:
 Esse procedimento seleciona um modelo que não é apenas rápido, nem apenas parecido com o
 professor: ele procura um equilíbrio entre ambos.
 
+Antes da soma, cada termo é colocado em escala comparável e recebe um peso definido no
+experimento. O erro de centro normalizado é a distância entre os centros do aluno e do
+professor dividida pelo raio esperado da bola. Assim, no exemplo inicial, 2,2 pixels viram
+0,13 raio. As penalidades por falha e latência impedem que uma solução lenta ou que perde a
+bola pareça boa apenas por acertar os poucos quadros restantes.
+
 \section{Modelo leve e controle de latência}
 
 Durante o jogo, o modelo leve usa a velocidade recente para prever onde a bola estará e
-recorta uma \textbf{região de interesse} (ROI). Cor, pré-processamento e detecção são
+recorta uma \textbf{região de interesse} (ROI), isto é, um pequeno retângulo provável em vez
+da imagem inteira. Cor, pré-processamento e detecção são
 executados apenas nessa região. Se a bola for perdida, o sistema volta temporariamente para
 uma busca global em meia resolução.
+
+Um filtro de Kalman \textbf{causal} mantém uma estimativa de posição e velocidade usando
+apenas medições que já chegaram. Ele prevê o próximo centro, e a nova detecção corrige essa
+previsão. Isso define a ROI com custo muito pequeno. É diferente do suavizador RTS do
+professor, que revisa a trajetória depois de conhecer também os quadros futuros.
 
 Outras medidas reduzem atraso:
 
@@ -344,6 +408,10 @@ transferência interna da câmera; ela é um limite inferior da latência físic
 SDK da câmera fornecer timestamps de hardware, eles devem substituir esse instante para uma
 medição ponta a ponta mais fiel.
 
+Uma analogia simples é iniciar um cronômetro depois que parte da corrida já aconteceu: o
+tempo registrado pode ser útil para comparar algoritmos, mas o percurso físico completo só
+pode ter demorado mais.
+
 \section{Aprendizado ativo e revisão humana}
 
 Rotular todos os quadros é caro e pouco informativo, pois a maioria deles é fácil. O
@@ -357,10 +425,12 @@ aprendizado ativo calcula uma dificuldade para cada quadro usando:
   \item baixo brilho e grande fração de sombras.
 \end{itemize}
 
-Forma-se um conjunto com os quadros mais difíceis e sorteiam-se $N$ exemplos desse conjunto.
+Forma-se um conjunto com os quadros mais difíceis --- por padrão, os 25\% de maior pontuação
+--- e sorteiam-se $N$ exemplos uniformemente desse conjunto.
 O sorteio evita revisar apenas um trecho contínuo do vídeo. O usuário pode marcar o centro e
 o raio ou pular quadros impossíveis por desfoque de movimento, escuridão ou oclusão. O motivo
-do descarte também é guardado e pode revelar limitações da câmera ou da iluminação.
+do descarte também é guardado e pode revelar limitações da câmera ou da iluminação. Pular
+significa ``não é possível rotular este quadro'', e não ``a bola está ausente''.
 
 \section{Avaliação e interpretação correta}
 
@@ -368,6 +438,14 @@ Na avaliação, professor e aluno recebem exatamente o mesmo quadro corrigido. S
 erro entre centros, falhas do aluno, detecções exclusivas do aluno, confiança, latência e
 quadros descartados pela captura. Os resultados agregados incluem média, mediana, percentil
 95 e erro máximo, além de concordância relativa ao raio da bola.
+
+Essas medidas respondem a três perguntas diferentes:
+\begin{itemize}
+  \item \textbf{O aluno imita o professor?} Compare seus centros e falhas no mesmo vídeo.
+  \item \textbf{Os dois estão corretos?} Compare ambos com a amostra manual independente.
+  \item \textbf{O aluno atende ao tempo real?} Meça a latência no computador e na câmera
+  usados no jogo.
+\end{itemize}
 
 \conceptbox{green}{
   \textbf{Como interpretar:} boa concordância com o professor mostra que o aluno preservou o
