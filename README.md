@@ -196,13 +196,19 @@ In the labeling window:
 - click the ball center;
 - use `+` or `-` to adjust the circle radius;
 - press **Enter** to save the label;
+- press **N** when the ball is genuinely absent (a negative example);
 - press **M** to skip motion blur;
 - press **D** to skip darkness;
 - press **O** to skip occlusion;
 - press **S** for another impossible case;
 - press **Q** to save progress and quit.
 
-Every decision is written immediately to `manual-labels.csv`. Running the same command again safely resumes and excludes frames that were already labeled or skipped. Skip reasons are preserved, which makes it possible to analyze whether failures predominantly come from exposure, blur, or occlusion.
+Every decision is written immediately to `manual-labels.csv`. Ball absence is stored as
+`status=absent`, separately from impossible frames, and contributes a false-positive penalty
+when `robot-soccer-refine` uses the active-learning labels. Running the same command again
+safely resumes and excludes frames that were already reviewed. Skip reasons are preserved,
+which makes it possible to analyze whether failures predominantly come from exposure, blur,
+or occlusion.
 
 The labeler additionally writes `manual-labels.selection.json` and `manual-labels.manifest.json`. These preserve every random sample, difficulty signal, seed, pool fraction, source-video hash, calibration-report hash, runtime, Git revision, reviewed counts, and artifact hashes.
 

@@ -32,8 +32,10 @@ def refine(source: str, report_path: str, labels_path: str, output: str, maximum
     report = json.loads(Path(report_path).read_text(encoding="utf-8"))
     rectifier = rectifier_from_report(report)
     with Path(labels_path).open(newline="", encoding="utf-8") as handle:
-        rows = [row for row in csv.DictReader(handle) if row["status"] == "labeled"]
-    if len(rows) < 3:
+        rows = [row for row in csv.DictReader(handle) if row["status"] in ("labeled", "absent")]
+    positives = [row for row in rows if row["status"] == "labeled"]
+    negatives = [row for row in rows if row["status"] == "absent"]
+    if len(positives) < 3:
         raise ValueError("At least three manually labeled frames are required")
 
     wanted = {int(row["frame_index"]): row for row in rows}
@@ -59,6 +61,8 @@ def refine(source: str, report_path: str, labels_path: str, output: str, maximum
     radii = []
     for frame_index, frame in labeled_frames.items():
         row = wanted[frame_index]
+        if row["status"] != "labeled":
+            continue
         center = (round(float(row["x"])), round(float(row["y"])))
         radius = max(2, round(float(row["radius"])))
         samples.append(sample_hsv_color(frame, center, radius))
@@ -72,17 +76,22 @@ def refine(source: str, report_path: str, labels_path: str, output: str, maximum
         detector = ExpensiveTeacher(candidate)
         errors = []
         found = 0
+        false_positives = 0
         for frame_index in sorted(labeled_frames):
             label = detector.detect(labeled_frames[frame_index], frame_index)
+            row = wanted[frame_index]
+            if row["status"] == "absent":
+                false_positives += label is not None
+                continue
             if label is None:
                 continue
             found += 1
-            row = wanted[frame_index]
             errors.append(float(np.linalg.norm(np.asarray(label.center) - (float(row["x"]), float(row["y"])))))
-        recall = found / len(labeled_frames)
+        recall = found / len(positives)
+        false_positive_rate = false_positives / max(1, len(negatives))
         mean_error = mean(errors) if errors else candidate.radius * 4.0
-        objective = mean_error / max(1, candidate.radius) + 1.5 * (1.0 - recall)
-        scored.append({"config": candidate.to_dict(), "manual_mean_error_px": mean_error, "manual_recall": recall, "manual_objective": objective})
+        objective = mean_error / max(1, candidate.radius) + 1.5 * (1.0 - recall) + false_positive_rate
+        scored.append({"config": candidate.to_dict(), "manual_mean_error_px": mean_error, "manual_recall": recall, "manual_false_positive_rate": false_positive_rate, "manual_objective": objective})
     scored.sort(key=lambda item: item["manual_objective"])
     teacher = _config(scored[0]["config"])
 
@@ -97,6 +106,8 @@ def refine(source: str, report_path: str, labels_path: str, output: str, maximum
     }
     active_learning = {
         "labeled_frames": len(rows),
+        "positive_frames": len(positives),
+        "negative_frames": len(negatives),
         "candidate_scores": scored,
         "selected_manual_mean_error_px": scored[0]["manual_mean_error_px"],
         "selected_manual_recall": scored[0]["manual_recall"],

@@ -75,6 +75,7 @@ def _save_label_manifest(
             "counts": {
                 "total_reviewed": len(rows),
                 "labeled": sum(row["status"] == "labeled" for row in rows),
+                "absent": sum(row["status"] == "absent" for row in rows),
                 "skipped": sum(row["status"] == "skipped" for row in rows),
             },
             "artifacts": artifact_records(artifacts),
@@ -184,7 +185,7 @@ def annotate(video_path: str, report_path: str, output_path: str, count: int, po
             cv2.putText(display, f"{position + 1}/{len(selected)} frame={record.frame_index} difficulty={record.difficulty:.2f}", (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (255, 255, 255), 2)
             cv2.putText(display, f"confidence={record.teacher_confidence:.2f} votes={record.teacher_votes} blur={record.blur_score:.0f} brightness={record.median_brightness:.0f}", (12, 54), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
             cv2.putText(display, "Click center; +/- radius; ENTER save", (12, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2)
-            cv2.putText(display, "Skip: M blur  D dark  O occluded  S other   Q quit", (12, 106), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2)
+            cv2.putText(display, "N: ball absent   Skip: M blur  D dark  O occluded  S other", (12, 106), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2)
             cv2.imshow(WINDOW, display)
             key = cv2.waitKey(0) & 0xFF
             if key in (ord("q"), 27):
@@ -205,7 +206,9 @@ def annotate(video_path: str, report_path: str, output_path: str, count: int, po
                 ord("s"): "other_impossible",
                 ord("S"): "other_impossible",
             }
-            if key in skip_reasons:
+            if key in (ord("n"), ord("N")):
+                rows.append(_annotation_row(record, "absent", None, state["radius"]))
+            elif key in skip_reasons:
                 rows.append(_annotation_row(record, "skipped", None, state["radius"], skip_reasons[key]))
             elif key in (10, 13) and state["center"] is not None:
                 rows.append(_annotation_row(record, "labeled", state["center"], state["radius"]))
