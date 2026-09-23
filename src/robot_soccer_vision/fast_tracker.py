@@ -135,7 +135,10 @@ class FastBallTracker(AdaptiveBallTracker):
         height, width = shape[:2]
         x0, y0 = np.floor(predicted - half).astype(int)
         x1, y1 = np.ceil(predicted + half + 1).astype(int)
-        return max(0, x0), max(0, y0), min(width, x1), min(height, y1)
+        clipped = max(0, x0), max(0, y0), min(width, x1), min(height, y1)
+        if clipped[2] <= clipped[0] or clipped[3] <= clipped[1]:
+            return None
+        return clipped
 
     def _preprocess_mask(self, frame: np.ndarray) -> np.ndarray:
         mask = self.raw_color_mask(frame)

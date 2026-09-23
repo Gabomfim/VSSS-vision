@@ -54,6 +54,15 @@ def test_downsampled_recovery_maps_to_full_resolution() -> None:
     assert result.refinement_ms > 0
 
 
+def test_tracker_falls_back_when_prediction_leaves_image() -> None:
+    tracker = FastBallTracker((15, 220, 220), FastTrackerConfig(use_roi=True))
+    tracker._kalman_state = np.asarray([-10000.0, -10000.0, -50.0, -50.0])
+
+    result = tracker.detect_timed(np.zeros((120, 160, 3), dtype=np.uint8))
+
+    assert result.used_roi is False
+
+
 def test_tracker_returns_to_full_field_after_roi_misses() -> None:
     tracker = FastBallTracker(
         (15, 220, 220),
