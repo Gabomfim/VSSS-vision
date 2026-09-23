@@ -306,12 +306,43 @@ Outras medidas reduzem atraso:
   \item o núcleo circular é pré-calculado;
   \item a captura mantém somente o quadro mais novo e descarta quadros antigos;
   \item o mapa de correção de perspectiva é pré-calculado;
-  \item a interface informa tempo de processamento, idade do quadro e uso de ROI;
+  \item a interface informa tempo de processamento, latência captura-até-resultado e uso de ROI;
   \item a cor só se adapta depois de detecções confiáveis.
 \end{itemize}
 
-Latência deve ser medida da captura até o resultado. Uma taxa alta de quadros por segundo não
-garante baixa latência se houver uma fila de imagens antigas.
+\subsection{Como e por que medir a latência}
+
+Uma linha de execução separada, chamada \emph{thread} de captura, recebe cada quadro e
+registra um instante $t_{captura}$ usando um relógio monotônico. Logo depois da correção de
+perspectiva e da localização da bola, mas antes de desenhar a interface, registra-se
+$t_{resultado}$. A medida principal é:
+
+\[
+  L_{captura\rightarrow resultado} = t_{resultado} - t_{captura}.
+\]
+
+Ela representa aproximadamente há quanto tempo os dados usados para calcular a posição já
+estavam no computador. A renderização fica fora da medida porque não é necessária para
+o robô tomar uma decisão e pode ser desativada em produção. A correção de perspectiva fica
+dentro, pois é indispensável para obter a posição usada pelo controle.
+
+Também se registra o \textbf{tempo de processamento}, medido apenas da entrada no pipeline à
+saída do detector. Ele ajuda a otimizar o algoritmo, mas não substitui a latência completa.
+Um programa pode processar cada quadro em 2 ms e, ainda assim, entregar uma imagem antiga se
+ela passou 20 ms esperando em uma fila. Da mesma forma, muitos quadros por segundo medem
+\textbf{vazão}, não garantem que o resultado mais recente chegou cedo. Por isso a captura usa
+um único slot e substitui quadros antigos pelo mais novo.
+
+O relatório deve apresentar pelo menos média, mediana, percentil 95 e máximo. A média mostra
+o comportamento comum; o percentil 95 revela atrasos frequentes que a média esconde; o
+máximo expõe travamentos ocasionais. Nos testes, descartam-se alguns quadros iniciais de
+aquecimento e mede-se por tempo suficiente para incluir buscas por ROI e recuperações globais.
+
+Sem timestamps fornecidos pela própria câmera, $t_{captura}$ é o instante em que o driver
+entrega o quadro ao programa. Portanto, essa medida não inclui com precisão exposição e
+transferência interna da câmera; ela é um limite inferior da latência física total. Quando o
+SDK da câmera fornecer timestamps de hardware, eles devem substituir esse instante para uma
+medição ponta a ponta mais fiel.
 
 \section{Aprendizado ativo e revisão humana}
 
