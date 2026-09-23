@@ -253,6 +253,12 @@ confiança, concordância espacial e proximidade da posição prevista. Só grup
 mínimo geram uma pseudo-etiqueta. A cor adaptativa do professor também só é atualizada após
 uma decisão confiável.
 
+Como trabalha fora de tempo real, o professor analisa o vídeo nos dois sentidos. Detecções
+próximas feitas com passado e futuro são combinadas conforme a confiança; grandes diferenças
+são rejeitadas. Um suavizador de Kalman bidirecional Rauch--Tung--Striebel ajusta posição e
+velocidade na trajetória inteira. Lacunas curtas só são preenchidas quando existem posições
+compatíveis antes e depois, sem inventar dados durante oclusões longas.
+
 Esse conjunto custa mais tempo que o permitido no jogo, mas reduz a chance de confiar em um
 único tipo de erro. Ele é adequado para processar vídeos gravados fora do laço de controle.
 
@@ -273,9 +279,10 @@ taxa de adaptação. Cada candidato é avaliado por quatro sinais:
   de brilho e saturação.
 \end{itemize}
 
-O melhor professor produz pseudo-etiquetas para o vídeo completo. Em seguida são comparadas
-16 combinações do aluno: quatro pré-processamentos, dois detectores e busca por região ligada
-ou desligada. O critério final combina:
+O melhor professor produz pseudo-etiquetas bidirecionais. O aluno permanece causal: usa
+somente o quadro atual e resultados anteriores, nunca o futuro. Comparam-se então 16
+combinações: quatro pré-processamentos, dois detectores e busca por região ligada ou
+desligada. O critério final combina:
 
 \[
   \text{objetivo} = \text{erro de centro normalizado}

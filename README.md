@@ -92,13 +92,15 @@ The expensive teacher searches the initial HSV sample, HSV tolerances, radius to
 - multiple radii;
 - component shape, disk-minus-ring convolution, and Hough-circle evidence.
 
-Only consensus detections become pseudo-labels. The student ablation compares four preprocessing choices (`none`, circular opening, circular opening/closing, and Gaussian), two detectors (connected components and matched filtering), and ROI search on/off. Each row reports center error against the teacher, recall, mean latency, p95 latency, and a combined objective.
+For the final offline pseudo-labels, the teacher processes the complete recording in both directions. Forward and backward detections are associated only when their centers agree, fused using confidence weights, and passed through a constant-velocity Rauch-Tung-Striebel smoother. Short gaps are interpolated only when bounded by compatible detections; strong directional disagreements are rejected. The report records counts for fusion, rejection, unilateral evidence, and interpolation under `temporal_labeling`.
+
+The student never receives future frames. Its velocity estimate and ROI use only detections already produced, so the deployed tracker remains strictly causal. The student ablation compares four preprocessing choices (`none`, circular opening, circular opening/closing, and Gaussian), two detectors (connected components and matched filtering), and ROI search on/off. Each row reports center error against the offline teacher, recall, mean latency, p95 latency, and a combined objective.
 
 The output directory contains:
 
 - `report.json`: selected teacher parameters and recommended fast pipeline;
 - `ablations.csv`: all accuracy/latency comparisons;
-- `pseudo_labels.csv`: teacher centers and confidence values.
+- `pseudo_labels.csv`: bidirectionally fused and smoothed teacher centers and confidence values;
 - `manifest.json`: input provenance, runtime information, Git revision, and SHA-256 hashes of every tuning artifact.
 
 Use the selected pipeline directly:

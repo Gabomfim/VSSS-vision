@@ -4,7 +4,12 @@ import cv2
 import numpy as np
 
 from robot_soccer_vision.fast_tracker import FastBallTracker, FastTrackerConfig
-from robot_soccer_vision.teacher import ExpensiveTeacher, TeacherConfig
+from robot_soccer_vision.teacher import (
+    ExpensiveTeacher,
+    PseudoLabel,
+    TeacherConfig,
+    fuse_bidirectional_labels,
+)
 from robot_soccer_vision.tuning import run_student_ablation, save_report
 from robot_soccer_vision.field_rectifier import FieldRectifier
 from robot_soccer_vision.difficulty import rectifier_from_report
@@ -59,6 +64,47 @@ def test_expensive_teacher_reaches_consensus() -> None:
     assert np.linalg.norm(np.asarray(labels[-1].center) - (159, 103)) <= 3
 
 
+def test_bidirectional_teacher_fuses_directions_and_fills_short_gap() -> None:
+    def label(index, x, confidence=0.9):
+        return PseudoLabel(index, (float(x), 100.0), 14.0, confidence, 4)
+
+    forward = [label(0, 100), label(1, 104), None, label(3, 112), label(4, 116)]
+    backward = [label(0, 101), label(1, 105), None, label(3, 113), label(4, 117)]
+
+    fused, diagnostics = fuse_bidirectional_labels(forward, backward, 14, maximum_gap=2)
+
+    assert all(item is not None for item in fused)
+    assert diagnostics["paired_frames"] == 4
+    assert diagnostics["interpolated_short_gap_frames"] == 1
+    assert np.linalg.norm(np.asarray(fused[2].center) - (108.5, 100)) < 1.5
+
+
+def test_bidirectional_teacher_rejects_direction_mismatch() -> None:
+    forward = [PseudoLabel(0, (30.0, 40.0), 14.0, 0.9, 4)]
+    backward = [PseudoLabel(0, (130.0, 140.0), 14.0, 0.9, 4)]
+
+    fused, diagnostics = fuse_bidirectional_labels(forward, backward, 14)
+
+    assert fused == [None]
+    assert diagnostics["rejected_direction_disagreements"] == 1
+
+
+def test_fast_tracker_result_cannot_depend_on_future_frame() -> None:
+    config = FastTrackerConfig(radius=14, recovery_scale=1.0, matched_filter_threshold=0.3)
+    first_tracker = FastBallTracker((15, 220, 220), config)
+    second_tracker = FastBallTracker(
+        (15, 220, 220),
+        FastTrackerConfig(radius=14, recovery_scale=1.0, matched_filter_threshold=0.3),
+    )
+    prefix = [scene((140, 100)), scene((146, 103))]
+    first_result = [first_tracker.detect_timed(frame).detection for frame in prefix][-1]
+    second_result = [second_tracker.detect_timed(frame).detection for frame in prefix][-1]
+    second_tracker.detect_timed(scene((280, 200)))
+
+    assert first_result is not None and second_result is not None
+    assert first_result.center == second_result.center
+
+
 def test_ablation_and_report_are_serializable(tmp_path) -> None:
     frames = [scene((150 + i * 2, 100)) for i in range(3)]
     teacher = TeacherConfig((15, 220, 220), radius=14)
@@ -68,11 +114,26 @@ def test_ablation_and_report_are_serializable(tmp_path) -> None:
         rectifier.add_point(point)
 
     results = run_student_ablation(frames, labels, teacher)
-    save_report(str(tmp_path), teacher, [], labels, results, 1.0, rectifier)
+    temporal = {
+        "mode": "bidirectional_rts",
+        "paired_frames": 3,
+        "interpolated_short_gap_frames": 0,
+    }
+    save_report(
+        str(tmp_path),
+        teacher,
+        [],
+        labels,
+        results,
+        1.0,
+        rectifier,
+        temporal_labeling=temporal,
+    )
 
     report = json.loads((tmp_path / "report.json").read_text())
     assert len(results) == 16
     assert report["recommended_student"]["objective"] == results[0].objective
+    assert report["temporal_labeling"] == temporal
     restored = rectifier_from_report(report)
     assert restored is not None and restored.ready
     assert restored.output_size == rectifier.output_size

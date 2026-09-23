@@ -247,6 +247,7 @@ def save_report(
     elapsed_seconds: float,
     rectifier: FieldRectifier | None = None,
     provenance: dict | None = None,
+    temporal_labeling: dict | None = None,
 ) -> None:
     output = Path(output_directory)
     output.mkdir(parents=True, exist_ok=True)
@@ -257,6 +258,7 @@ def save_report(
         "ablation_count": len(ablations),
         "recommended_student": asdict(ablations[0]),
         "elapsed_seconds": elapsed_seconds,
+        "temporal_labeling": temporal_labeling,
         "provenance": provenance,
         "field_calibration": None
         if rectifier is None
@@ -335,18 +337,24 @@ def tune_pipeline(
         progress=progress,
     )
     if progress is not None:
-        progress("Pseudo-labeling", 56, "running the selected ensemble teacher")
+        progress("Pseudo-labeling", 56, "running teacher forward and backward")
     teacher_model = ExpensiveTeacher(teacher)
-    labels = []
-    label_step = max(1, len(frames) // 12)
-    for index, frame in enumerate(frames):
-        labels.append(teacher_model.detect(frame, index))
-        if progress is not None and index % label_step == 0:
+
+    def temporal_progress(completed: int, total: int, phase: str) -> None:
+        if progress is not None:
             progress(
                 "Pseudo-labeling",
-                56 + 13 * index / max(1, len(frames)),
-                f"frame {index + 1}/{len(frames)}",
+                56 + 13 * completed / max(1, total),
+                f"{phase}: {completed}/{total} directional frames",
             )
+
+    labels = teacher_model.label_bidirectional(frames, progress=temporal_progress)
+    if progress is not None:
+        progress(
+            "Pseudo-labeling",
+            69,
+            f"fused and smoothed {len(frames)} frames using past and future evidence",
+        )
     ablations = run_student_ablation(
         frames, labels, teacher, progress=progress
     )
@@ -361,6 +369,7 @@ def tune_pipeline(
         perf_counter() - started,
         rectifier,
         provenance,
+        teacher_model.bidirectional_diagnostics,
     )
     if progress is not None:
         progress("Complete", 100, "tuning finished")
