@@ -34,7 +34,7 @@
   colorlinks=true,
   linkcolor=blue,
   urlcolor=blue,
-  pdftitle={Metodologia de Calibração e Rastreamento da Bola},
+  pdftitle={Metodologia de Calibração e Tracking da Bola},
   pdfauthor={Projeto Robot Soccer Vision}
 }
 
@@ -56,7 +56,7 @@
   \vspace*{2.2cm}
   {\color{navy}\rule{\textwidth}{1.5pt}}\\[1.2cm]
   {\Huge\bfseries\color{navy} Metodologia de Calibração\\[0.25cm]
-  e Rastreamento da Bola\par}
+  e \textit{Tracking} da Bola\par}
   \vspace{0.7cm}
   {\Large\color{graytext} Visão computacional para futebol de robôs VSSS\par}
   \vspace{1.5cm}
@@ -90,15 +90,15 @@ circular e quase não muda de tamanho na imagem. Essas três informações são 
 \end{itemize}
 
 O desafio é que a aparência da cor muda com iluminação, exposição, sombras e reflexos.
-Além disso, o rastreador precisa responder rapidamente. Por isso, o sistema separa duas
-funções:
+Além disso, o sistema de \textit{tracking} precisa responder rapidamente. Na terminologia
+usual de \textit{machine learning}, o sistema separa duas funções:
 
 \begin{center}
 \begin{tabularx}{0.94\linewidth}{>{\bfseries\color{navy}}p{2.3cm}X}
 \toprule
-Modelo robusto & Usa várias técnicas e busca consenso. É mais lento e serve como
-``professor'' durante calibração e avaliação.\\
-Modelo leve & Usa apenas a combinação escolhida pelos testes comparativos, chamados de
+\textit{Teacher} robusto & Usa várias técnicas e busca consenso. É mais lento e serve como
+\textit{teacher} durante calibração e avaliação.\\
+\textit{Student} leve & Usa apenas a combinação escolhida pelos testes comparativos, chamados de
 ablações. É o modelo executado
 em tempo real durante o jogo.\\
 \bottomrule
@@ -107,14 +107,15 @@ em tempo real durante o jogo.\\
 
 \conceptbox{green}{
   O modelo robusto não é uma verdade perfeita. A posição que ele gera automaticamente é
-  uma \textbf{pseudo-etiqueta}, não uma verdade absoluta.
+  um \textbf{\textit{pseudo-label}}, não um \textit{ground truth}.
   Uma pequena amostra rotulada manualmente continua necessária para detectar erros que
   os dois modelos possam cometer juntos.
 }
 
 \conceptbox{blue}{
   \textbf{Exemplo para acompanhar o texto:} suponha uma bola de raio 17 pixels. Em certo
-  quadro, o professor estima o centro em $(620,410)$ e o aluno em $(622,409)$. A distância
+  quadro, o \textit{teacher} estima o centro em $(620,410)$ e o \textit{student} em
+  $(622,409)$. A distância
   entre os centros é 2,2 pixels, ou $2,2/17=0,13$ raio. Se o resultado chegar 3,8 ms após a
   captura, esse quadro contribui tanto para a medida de precisão quanto para a de latência.
 }
@@ -185,8 +186,8 @@ também podem representar cores vizinhas.
 
 A \textbf{máscara binária} é uma imagem em preto e branco: um pixel aceito pelas três
 tolerâncias fica branco (possível bola), enquanto um pixel rejeitado fica preto. Ela evita
-cálculos com números decimais e pode ser processada rapidamente tanto pelo professor quanto
-pelo aluno; o professor apenas combina essa informação com mais evidências.
+cálculos com números decimais e pode ser processada rapidamente tanto pelo \textit{teacher}
+quanto pelo \textit{student}; o \textit{teacher} apenas combina essa informação com mais evidências.
 
 Depois de uma detecção de alta confiança, o sistema observa novamente a parte interna da
 bola e atualiza a cor por uma \textbf{média móvel exponencial}:
@@ -227,13 +228,13 @@ contrária para preencher pequenos buracos.
 
 \section{Técnicas de detecção}
 
-\subsection{Filtro casado disco-menos-anel}
+\subsection{\textit{Matched filter} disco-menos-anel}
 
-O detector leve principal usa uma \textbf{convolução} com um \textbf{núcleo} circular
-pré-calculado. O núcleo é uma pequena tabela de números que funciona como um molde. A
+O detector leve principal usa uma \textbf{convolução} com um \textbf{\textit{kernel}} circular
+pré-calculado. O \textit{kernel} é uma pequena tabela de números que funciona como um molde. A
 convolução desliza esse molde sobre a imagem e calcula, em cada posição, uma nota de
 semelhança. O centro
-do núcleo possui pesos positivos e representa a bola. Um anel externo possui pesos
+do \textit{kernel} possui pesos positivos e representa a bola. Um anel externo possui pesos
 negativos e representa o fundo esperado ao redor dela.
 
 \conceptbox{orange}{
@@ -242,7 +243,7 @@ negativos e representa o fundo esperado ao redor dela.
   pontuação.
 }
 
-Como o raio muda pouco, o núcleo é criado uma vez. A convolução procura o ponto de maior
+Como o raio muda pouco, o \textit{kernel} é criado uma vez. A convolução procura o ponto de maior
 resposta. Essa operação é densa, simples e rápida em uma pequena região de busca.
 
 \subsection{Componentes conexos}
@@ -258,12 +259,12 @@ O modelo robusto usa ainda a transformada de Hough para círculos. Ela procura e
 bordas organizadas ao redor de um centro e de um raio. É mais cara, mas fornece uma fonte de
 evidência diferente da cor preenchida e dos componentes conexos.
 
-\section{O professor robusto}
+\section{O \textit{teacher} robusto}
 
-O professor executa uma busca global e combina várias opiniões:
+O \textit{teacher} executa uma busca global e combina várias opiniões:
 
 \begin{enumerate}
-  \item filtro casado e componentes conexos;
+  \item \textit{matched filter} (filtro casado) e componentes conexos;
   \item repete a detecção com três tamanhos candidatos próximos ao raio inicial, tolerando
   um pequeno erro da calibração;
   \item abertura e fechamento morfológicos;
@@ -273,17 +274,17 @@ O professor executa uma busca global e combina várias opiniões:
 
 As propostas próximas são agrupadas. Cada grupo recebe votos e uma pontuação de acordo com
 confiança, concordância espacial e proximidade da posição prevista. Só grupos com consenso
-mínimo geram uma pseudo-etiqueta. A cor adaptativa do professor também só é atualizada após
+mínimo geram um \textit{pseudo-label}. A cor adaptativa do \textit{teacher} também só é atualizada após
 uma decisão confiável.
 
 Por exemplo, se três detectores propõem centros separados por apenas dois ou três pixels,
 eles formam um grupo forte. Uma quarta proposta muito distante fica isolada e pode ser
-rejeitada. A posição aceita recebe o nome de \textbf{pseudo-etiqueta}: é um rótulo produzido
+rejeitada. A posição aceita recebe o nome de \textbf{\textit{pseudo-label}}: é um rótulo produzido
 automaticamente, útil para treinamento, mas ainda sujeito a erro.
 
-Como trabalha fora de tempo real, o professor analisa o vídeo nos dois sentidos. Detecções
+Como trabalha fora de tempo real, o \textit{teacher} analisa o vídeo nos dois sentidos. Detecções
 próximas feitas com passado e futuro são combinadas conforme a confiança; grandes diferenças
-são rejeitadas. Um suavizador de Kalman bidirecional Rauch--Tung--Striebel ajusta posição e
+são rejeitadas. Um \textit{Rauch--Tung--Striebel smoother} bidirecional ajusta posição e
 velocidade na trajetória inteira. Lacunas curtas só são preenchidas quando existem posições
 compatíveis antes e depois, sem inventar dados durante oclusões longas.
 
@@ -295,45 +296,46 @@ Esse conjunto custa mais tempo que o permitido no jogo, mas reduz a chance de co
 \toprule
  & Informação temporal & Uso principal\\
 \midrule
-Professor & Quadro atual, passado e futuro; suavização bidirecional RTS. & Criar e conferir
-pseudo-etiquetas em vídeo gravado.\\
-Aluno & Quadro atual e estado calculado no passado; filtro de Kalman causal. & Entregar a
+\textit{Teacher} & Quadro atual, passado e futuro; \textit{RTS smoother} bidirecional. & Criar e conferir
+\textit{pseudo-labels} em vídeo gravado.\\
+\textit{Student} & Quadro atual e estado calculado no passado; filtro de Kalman causal. & Entregar a
 posição ao vivo durante o jogo.\\
 \bottomrule
 \end{tabularx}
 \end{center}
 
-Usar o futuro no professor não é vazamento para o sistema ao vivo: essa informação serve
-somente para criar rótulos fora de tempo real. O aluno nunca recebe quadros futuros durante
+Usar o futuro no \textit{teacher} não é \textit{data leakage} para o sistema ao vivo: essa
+informação serve somente para criar rótulos fora de tempo real. O \textit{student} nunca
+recebe quadros futuros durante
 o ajuste nem durante o teste.
 
-\section{Autossupervisão e escolha de hiperparâmetros}
+\section{\textit{Self-supervision} e escolha de hiperparâmetros}
 
-Autossupervisão significa criar um sinal de qualidade a partir do próprio vídeo, sem exigir
+\textit{Self-supervision} (autossupervisão) significa criar um sinal de qualidade a partir do próprio vídeo, sem exigir
 a posição medida por um sensor externo em todos os quadros.
 
-\subsection{Ajuste do professor}
+\subsection{Ajuste do \textit{teacher}}
 
 O sistema experimenta variações da cor inicial, raio, tolerâncias HSV, tolerância de raio e
 taxa de adaptação. Cada candidato é avaliado por quatro sinais:
 
 \begin{itemize}
   \item \textbf{cobertura:} quantos quadros recebem uma detecção;
-  \item \textbf{confiança:} quão forte é o consenso interno do professor;
+  \item \textbf{confiança:} quão forte é o consenso interno do \textit{teacher};
   \item \textbf{ida e volta:} o vídeo processado do início ao fim deve concordar com o mesmo
   vídeo processado do fim ao início;
   \item \textbf{iluminação:} a posição deve permanecer semelhante após alterações artificiais
   de brilho e saturação.
 \end{itemize}
 
-O melhor professor produz pseudo-etiquetas bidirecionais.
+O melhor \textit{teacher} produz \textit{pseudo-labels} bidirecionais.
 
-\subsection{Escolha do aluno por ablações}
+\subsection{Escolha do \textit{student} por \textit{ablations}}
 
-O aluno permanece causal: usa
+O \textit{student} permanece causal: usa
 somente o quadro atual e resultados anteriores, nunca o futuro. Comparam-se então 16
 combinações: quatro pré-processamentos, dois detectores e busca por região ligada ou
-desligada. Uma \textbf{ablação} é esse teste controlado: muda-se uma parte do pipeline e
+desligada. Uma \textbf{\textit{ablation}} é esse teste controlado: muda-se uma parte do \textit{pipeline} e
 observa-se quanto a precisão e a latência se alteram. O critério final combina:
 
 \[
@@ -343,11 +345,11 @@ observa-se quanto a precisão e a latência se alteram. O critério final combin
 \]
 
 Esse procedimento seleciona um modelo que não é apenas rápido, nem apenas parecido com o
-professor: ele procura um equilíbrio entre ambos.
+\textit{teacher}: ele procura um equilíbrio entre ambos.
 
 Antes da soma, cada termo é colocado em escala comparável e recebe um peso definido no
-experimento. O erro de centro normalizado é a distância entre os centros do aluno e do
-professor dividida pelo raio esperado da bola. Assim, no exemplo inicial, 2,2 pixels viram
+experimento. O erro de centro normalizado é a distância entre os centros do \textit{student}
+e do \textit{teacher} dividida pelo raio esperado da bola. Assim, no exemplo inicial, 2,2 pixels viram
 0,13 raio. As penalidades por falha e latência impedem que uma solução lenta ou que perde a
 bola pareça boa apenas por acertar os poucos quadros restantes.
 
@@ -361,13 +363,13 @@ uma busca global em meia resolução.
 
 Um filtro de Kalman \textbf{causal} mantém uma estimativa de posição e velocidade usando
 apenas medições que já chegaram. Ele prevê o próximo centro, e a nova detecção corrige essa
-previsão. Isso define a ROI com custo muito pequeno. É diferente do suavizador RTS do
-professor, que revisa a trajetória depois de conhecer também os quadros futuros.
+previsão. Isso define a ROI com custo muito pequeno. É diferente do \textit{RTS smoother} do
+\textit{teacher}, que revisa a trajetória depois de conhecer também os quadros futuros.
 
 Outras medidas reduzem atraso:
 
 \begin{itemize}
-  \item o núcleo circular é pré-calculado;
+  \item o \textit{kernel} circular é pré-calculado;
   \item a captura mantém somente o quadro mais novo e descarta quadros antigos;
   \item o mapa de correção de perspectiva é pré-calculado;
   \item a interface informa tempo de processamento, latência captura-até-resultado e uso de ROI;
@@ -394,7 +396,7 @@ Também se registra o \textbf{tempo de processamento}, medido apenas da entrada 
 saída do detector. Ele ajuda a otimizar o algoritmo, mas não substitui a latência completa.
 Um programa pode processar cada quadro em 2 ms e, ainda assim, entregar uma imagem antiga se
 ela passou 20 ms esperando em uma fila. Da mesma forma, muitos quadros por segundo medem
-\textbf{vazão}, não garantem que o resultado mais recente chegou cedo. Por isso a captura usa
+\textit{throughput}, não garantem que o resultado mais recente chegou cedo. Por isso a captura usa
 um único slot e substitui quadros antigos pelo mais novo.
 
 O relatório deve apresentar pelo menos média, mediana, percentil 95 e máximo. A média mostra
@@ -412,14 +414,14 @@ Uma analogia simples é iniciar um cronômetro depois que parte da corrida já a
 tempo registrado pode ser útil para comparar algoritmos, mas o percurso físico completo só
 pode ter demorado mais.
 
-\section{Aprendizado ativo e revisão humana}
+\section{\textit{Active learning} e revisão humana}
 
 Rotular todos os quadros é caro e pouco informativo, pois a maioria deles é fácil. O
-aprendizado ativo calcula uma dificuldade para cada quadro usando:
+\textit{active learning} calcula uma dificuldade para cada quadro usando:
 
 \begin{itemize}
-  \item baixa confiança e poucos votos do professor;
-  \item diferença entre professor e aluno;
+  \item baixa confiança e poucos votos do \textit{teacher};
+  \item diferença entre \textit{teacher} e \textit{student};
   \item movimento inesperado em relação à previsão temporal;
   \item pouca nitidez, medida pela variância do Laplaciano;
   \item baixo brilho e grande fração de sombras.
@@ -434,21 +436,21 @@ significa ``não é possível rotular este quadro'', e não ``a bola está ausen
 
 \section{Avaliação e interpretação correta}
 
-Na avaliação, professor e aluno recebem exatamente o mesmo quadro corrigido. São registrados
-erro entre centros, falhas do aluno, detecções exclusivas do aluno, confiança, latência e
+Na avaliação, \textit{teacher} e \textit{student} recebem exatamente o mesmo quadro corrigido. São registrados
+erro entre centros, falhas do \textit{student}, detecções exclusivas do \textit{student}, confiança, latência e
 quadros descartados pela captura. Os resultados agregados incluem média, mediana, percentil
 95 e erro máximo, além de concordância relativa ao raio da bola.
 
 Essas medidas respondem a três perguntas diferentes:
 \begin{itemize}
-  \item \textbf{O aluno imita o professor?} Compare seus centros e falhas no mesmo vídeo.
+  \item \textbf{O \textit{student} imita o \textit{teacher}?} Compare seus centros e falhas no mesmo vídeo.
   \item \textbf{Os dois estão corretos?} Compare ambos com a amostra manual independente.
-  \item \textbf{O aluno atende ao tempo real?} Meça a latência no computador e na câmera
+  \item \textbf{O \textit{student} atende ao tempo real?} Meça a latência no computador e na câmera
   usados no jogo.
 \end{itemize}
 
 \conceptbox{green}{
-  \textbf{Como interpretar:} boa concordância com o professor mostra que o aluno preservou o
+  \textbf{Como interpretar:} boa concordância com o \textit{teacher} mostra que o \textit{student} preservou o
   comportamento do modelo robusto. Ela não prova que ambos estão corretos. A validação final
   deve comparar os dois com uma pequena amostra manual independente.
 }
@@ -464,11 +466,11 @@ mão durante o experimento.
 \fcolorbox{navy}{lightblue}{\parbox{0.92\linewidth}{
 \centering
 \textbf{Vídeo + calibração visual} $\rightarrow$
-\textbf{professor robusto} $\rightarrow$
-\textbf{pseudo-etiquetas}\\[0.35em]
+\textbf{\textit{teacher} robusto} $\rightarrow$
+\textbf{\textit{pseudo-labels}}\\[0.35em]
 $\downarrow$\\[-0.1em]
-\textbf{ablações de baixo custo} $\rightarrow$
-\textbf{modelo leve escolhido} $\rightarrow$
+\textbf{\textit{ablations} de baixo custo} $\rightarrow$
+\textbf{\textit{student} escolhido} $\rightarrow$
 \textbf{avaliação e quadros difíceis}\\[0.35em]
 $\downarrow$\\[-0.1em]
 \textbf{revisão humana pequena} $\rightarrow$
