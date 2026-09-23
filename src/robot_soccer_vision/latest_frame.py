@@ -34,6 +34,7 @@ class LatestFrameCapture:
         self._paused = False
         self._pause_after_frame = start_paused_after_first
         source_fps = self.capture.get(cv2.CAP_PROP_FPS)
+        self.fps = source_fps if 1.0 <= source_fps <= 1000.0 else 30.0
         self._playback_interval = (
             1.0 / source_fps
             if isinstance(source, str) and 1.0 <= source_fps <= 1000.0

@@ -58,6 +58,21 @@ Alternatively, retain a diagnostic preview but draw only one result out of every
 robot-soccer-track-fast --report tuning-results/report.json --display-every 10
 ```
 
+Record an annotated tracking video with `--video-output`. Recording starts only after field
+and ball calibration have finished, so setup frames are not included:
+
+```bash
+robot-soccer-track-fast \
+  --source path/to/match.mp4 \
+  --report tuning-results/report.json \
+  --video-output output/tracking.mp4
+```
+
+The same option works without `--report`; in that case, complete the interactive field and
+ball calibration first, and only the subsequent tracking frames are written. It can also be
+combined with `--evaluate` and `--no-display` to generate an experiment video without the
+preview-window rendering cost.
+
 For live cameras, the fast tracker requests a one-frame backend buffer and manual exposure and white balance. `--exposure VALUE` passes a backend-specific exposure value to OpenCV. Use `--automatic-camera` only when automatic camera controls are intentionally required. On exit, the application prints mean, p95, and maximum capture-to-result latency; evaluation reports also store this distribution and the value for every frame.
 
 Use another camera or a recorded match:

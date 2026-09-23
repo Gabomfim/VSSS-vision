@@ -51,6 +51,7 @@ def run(
     no_display: bool = False,
     automatic_camera: bool = False,
     exposure: float | None = None,
+    video_output: str | None = None,
 ) -> None:
     if evaluate and report_path is None:
         raise ValueError("--evaluate requires --report so the robust teacher is defined")
@@ -83,6 +84,7 @@ def run(
     evaluation_provenance = None
     capture_to_result_latencies = []
     processed_frames = 0
+    video_writer = None
     if evaluate:
         print("Recording calibration and evaluation input provenance...")
         assert report is not None
@@ -177,7 +179,7 @@ def run(
             should_render = not no_display and (
                 calibrating or processed_frames % max(1, display_every) == 0
             )
-            display = frame.copy() if should_render else None
+            display = frame.copy() if (should_render or video_output is not None) else None
             if calibrating:
                 assert display is not None
                 cv2.circle(display, tuple(cursor), config.radius, (255, 255, 255), 2)
@@ -202,16 +204,16 @@ def run(
                         capture_to_result_ms,
                     )
                     evaluation_frame += 1
-                if should_render and result.detection is not None:
+                if display is not None and result.detection is not None:
                     assert display is not None
                     detection = result.detection
                     cv2.circle(display, detection.center, round(detection.radius), (0, 255, 0), 2)
                     cv2.drawMarker(display, detection.center, (0, 255, 0), cv2.MARKER_CROSS, 16, 2)
                     _draw_label(display, f"BALL x={detection.center[0]} y={detection.center[1]}", 0, (0, 255, 0))
-                elif should_render:
+                elif display is not None:
                     assert display is not None
                     _draw_label(display, "Ball not found - recovering globally", 0, (0, 0, 255))
-                if should_render:
+                if display is not None:
                     assert display is not None
                     _draw_label(
                         display,
@@ -219,7 +221,7 @@ def run(
                         1,
                     )
                     _draw_label(display, "C: ball   F: field corners   A: freeze learning", 2)
-                if should_render and evaluation is not None:
+                if display is not None and evaluation is not None:
                     assert display is not None
                     error_text = "n/a" if latest_error is None else f"{latest_error:.2f}px"
                     _draw_label(
@@ -228,6 +230,20 @@ def run(
                         3,
                         (255, 200, 0),
                     )
+                    if teacher_label is not None:
+                        teacher_center = tuple(round(value) for value in teacher_label.center)
+                        cv2.circle(display, teacher_center, round(teacher_label.radius), (255, 180, 0), 2)
+                if video_output is not None and display is not None:
+                    if video_writer is None:
+                        destination = Path(video_output)
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        video_writer = cv2.VideoWriter(
+                            str(destination), cv2.VideoWriter_fourcc(*"mp4v"), capture.fps,
+                            (display.shape[1], display.shape[0]),
+                        )
+                        if not video_writer.isOpened():
+                            raise RuntimeError(f"Could not create output video: {destination}")
+                    video_writer.write(display)
             if should_render:
                 assert display is not None
                 cv2.imshow(WINDOW, display)
@@ -254,6 +270,8 @@ def run(
                 capture.resume()
     finally:
         capture.release()
+        if video_writer is not None:
+            video_writer.release()
         if not no_display:
             cv2.destroyAllWindows()
         if capture_to_result_latencies:
@@ -304,6 +322,7 @@ def main() -> None:
         default="fast-evaluation.json",
         help="JSON destination used with --evaluate",
     )
+    parser.add_argument("--video-output", help="write an annotated MP4 evaluation video")
     args = parser.parse_args()
     if args.evaluate and not args.report:
         parser.error("--evaluate requires --report")
@@ -316,6 +335,7 @@ def main() -> None:
         args.no_display,
         args.automatic_camera,
         args.exposure,
+        args.video_output,
     )
 
 

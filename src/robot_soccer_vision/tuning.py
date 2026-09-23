@@ -248,6 +248,7 @@ def save_report(
     rectifier: FieldRectifier | None = None,
     provenance: dict | None = None,
     temporal_labeling: dict | None = None,
+    active_learning: dict | None = None,
 ) -> None:
     output = Path(output_directory)
     output.mkdir(parents=True, exist_ok=True)
@@ -259,6 +260,7 @@ def save_report(
         "recommended_student": asdict(ablations[0]),
         "elapsed_seconds": elapsed_seconds,
         "temporal_labeling": temporal_labeling,
+        "active_learning": active_learning,
         "provenance": provenance,
         "field_calibration": None
         if rectifier is None
@@ -370,6 +372,7 @@ def tune_pipeline(
         rectifier,
         provenance,
         teacher_model.bidirectional_diagnostics,
+        None,
     )
     if progress is not None:
         progress("Complete", 100, "tuning finished")

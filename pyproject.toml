@@ -22,6 +22,7 @@ robot-soccer-track-adaptive = "robot_soccer_vision.adaptive_app:main"
 robot-soccer-track-fast = "robot_soccer_vision.fast_app:main"
 robot-soccer-tune = "robot_soccer_vision.tune_app:main"
 robot-soccer-label = "robot_soccer_vision.label_app:main"
+robot-soccer-refine = "robot_soccer_vision.refine_app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
