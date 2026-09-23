@@ -7,3 +7,7 @@ dist/
 build/
 *.egg-info/
 tuning-results/
+data/
+tmp/
+tuning-results-*/
+manual-labels.csv
