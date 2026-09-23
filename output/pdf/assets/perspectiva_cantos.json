@@ -1,0 +1,33 @@
+{
+  "source_video": "/Users/silvs/Documents/ChatGPT/Robot Soccer/robot-soccer-vision/data/train/train_1.MOV",
+  "source_sha256": "27d7d4468b3a5e3d92e2351c097803f4feddf487c35adabca7ac54f067e7a3ad",
+  "frame_index": 0,
+  "corner_order": [
+    "TOP-LEFT",
+    "TOP-RIGHT",
+    "BOTTOM-RIGHT",
+    "BOTTOM-LEFT"
+  ],
+  "corners_px": [
+    [
+      10.0,
+      370.0
+    ],
+    [
+      1056.0,
+      385.0
+    ],
+    [
+      1000.0,
+      1545.0
+    ],
+    [
+      36.0,
+      1515.0
+    ]
+  ],
+  "corrected_size_px": [
+    1046,
+    1161
+  ]
+}

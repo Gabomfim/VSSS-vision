@@ -123,6 +123,27 @@ O quadrilátero é usado \textbf{somente para corrigir o enviesamento da imagem}
 converte pixels em milímetros e não inventa margens fora da região selecionada. O mapa da
 transformação é calculado uma vez e reutilizado nos demais quadros.
 
+A Figura~\ref{fig:perspectiva} mostra um exemplo obtido do primeiro quadro de um vídeo de
+treinamento. À esquerda, os quatro pontos escolhidos delimitam o campo. À direita, a mesma
+região aparece após a homografia: os cantos passam a formar um retângulo e as áreas externas
+ao quadrilátero são descartadas.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{minipage}[c]{0.39\linewidth}
+    \centering
+    \includegraphics[height=6.2cm]{output/pdf/assets/perspectiva_antes.png}
+    \\[1mm]\small (a) Antes: quadrilátero selecionado.
+  \end{minipage}\hfill
+  \begin{minipage}[c]{0.57\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{output/pdf/assets/perspectiva_depois.png}
+    \\[1mm]\small (b) Depois: campo retificado.
+  \end{minipage}
+  \caption{Correção de perspectiva aplicada ao primeiro quadro do vídeo de treinamento.}
+  \label{fig:perspectiva}
+\end{figure}
+
 \subsection{Amostra inicial da bola}
 
 Na imagem corrigida, o usuário posiciona uma circunferência sobre a bola e ajusta seu raio.
